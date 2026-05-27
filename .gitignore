@@ -1,0 +1,19 @@
+# 系統檔案
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 編輯器 / IDE
+.vscode/
+*.suo
+*.user
+
+# Claude Code 開發伺服器設定（不需納入版控）
+.claude/
+
+# 測試帳號清單（含敏感資料，不上傳）
+*.xlsx
+*.xls
+
+# Node（若未來使用）
+node_modules/
