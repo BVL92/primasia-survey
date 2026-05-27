@@ -278,15 +278,20 @@ function adminLogout(){
 
 // ── DATA ──
 async function loadData(){
+  let firestoreUsers = null;
   try{
     const snap=await db.collection('surveys').get();
-    const users={};
-    snap.forEach(doc=>{users[doc.id]=doc.data();});
-    return{users};
+    if(!snap.empty){
+      firestoreUsers={};
+      snap.forEach(doc=>{firestoreUsers[doc.id]=doc.data();});
+    }
   }catch(e){
     console.warn('Firestore 讀取失敗，改用本機資料:',e);
-    try{return JSON.parse(localStorage.getItem(STORE_KEY))||{users:{}};}catch(e2){return{users:{}};}
   }
+  // Firestore 有資料 → 使用 Firestore
+  if(firestoreUsers) return{users:firestoreUsers};
+  // Firestore 空或失敗 → 使用 localStorage 備援
+  try{return JSON.parse(localStorage.getItem(STORE_KEY))||{users:{}};}catch(e){return{users:{}};}
 }
 
 // ── DEMO DATA ──
@@ -302,13 +307,21 @@ async function genDemoData(){
     'H800000008':{progress:5,answers:{0:['台股、美股','其他（期貨、加密貨幣等）'],1:'新台幣 51 萬元以上',2:['海外股票 / 基金投資','AI 智能投資組合建議'],3:'有興趣，願意參加',4:'平日'},dismissedUntil:null,completedAt:'2026-05-25T17:45:00Z',loginCount:5,firstLogin:'2026-05-21T09:00:00Z'},
     'Y123123113':{progress:0,answers:{},dismissedUntil:null,completedAt:null,loginCount:1,firstLogin:'2026-05-26T10:00:00Z'},
   };
-  // 批次寫入 Firestore
-  const batch=db.batch();
-  Object.entries(demoUsers).forEach(([id,data])=>{
-    batch.set(db.collection('surveys').doc(id),data);
-  });
-  await batch.commit();
-  renderDashboard();
+  // ① 先寫 localStorage（確保即使 Firestore 失敗也能顯示）
+  localStorage.setItem(STORE_KEY, JSON.stringify({users: demoUsers}));
+
+  // ② 嘗試寫入 Firestore（集中儲存，失敗不影響畫面）
+  try{
+    const batch=db.batch();
+    Object.entries(demoUsers).forEach(([id,data])=>{
+      batch.set(db.collection('surveys').doc(id),data);
+    });
+    await batch.commit();
+  }catch(e){
+    console.warn('Firestore 示範資料寫入失敗，使用本機資料:', e);
+  }
+
+  renderDashboard(); // 無論如何都更新畫面
 }
 
 // ── RENDER ──
@@ -424,6 +437,9 @@ async function exportCSV(){
 // ── RESET ──
 async function confirmReset(){
   if(confirm('確定要清除所有問卷資料嗎？\n此操作無法還原。')){
+    // 清除 localStorage
+    localStorage.removeItem(STORE_KEY);
+    // 清除 Firestore
     try{
       const snap=await db.collection('surveys').get();
       const batch=db.batch();
