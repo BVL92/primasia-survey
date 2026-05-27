@@ -449,6 +449,7 @@ const Q_SEG = [
 ];
 
 let currentUser=null,selectedOpts=[];
+let allUsersCache=null; // Firestore 所有用戶資料快取（用於分佈統計）
 
 function loadData(){try{return JSON.parse(localStorage.getItem(STORE_KEY))||{users:{}};}catch(e){return{users:{}};}}
 function saveData(d){localStorage.setItem(STORE_KEY,JSON.stringify(d));}
@@ -458,10 +459,14 @@ function setUser(id,u){
   const d=loadData();d.users[id]=u;saveData(d);
   // 2. 同步寫入 Firebase Firestore（集中收集）
   db.collection('surveys').doc(id).set(u).catch(e=>console.warn('雲端儲存失敗:',e));
+  // 3. 更新本地快取，讓後續題目的分佈統計即時反映自己的回答
+  if(allUsersCache) allUsersCache.users[id]=u;
 }
 
 function getDistribution(qi){
-  const data=loadData();const q=QUESTIONS[qi];
+  // 優先使用 Firestore 快取（含所有測試者資料），否則退回本機 localStorage
+  const data=allUsersCache||loadData();
+  const q=QUESTIONS[qi];
   const counts={};q.opts.forEach(o=>counts[o]=0);let responders=0;
   Object.values(data.users).forEach(u=>{
     if(u.answers&&u.answers[qi]!==undefined){
@@ -476,7 +481,7 @@ function getDistribution(qi){
 function showView(v){document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));document.getElementById(v).classList.add('active');window.scrollTo(0,0);}
 function backToLogin(){currentUser=null;document.getElementById('loginId').value='';document.getElementById('loginPwd').value='';showView('loginView');}
 
-function doLogin(){
+async function doLogin(){
   const id=document.getElementById('loginId').value.trim();
   const pw=document.getElementById('loginPwd').value;
   const err=document.getElementById('loginErr');
@@ -492,6 +497,15 @@ function doLogin(){
       showView('dismissedView');return;
     }
     u.dismissedUntil=null;
+  }
+  // 從 Firestore 預載所有用戶回答，供分佈統計使用
+  try{
+    const snap=await db.collection('surveys').get();
+    const users={};
+    snap.forEach(doc=>{users[doc.id]=doc.data();});
+    allUsersCache={users};
+  }catch(e){
+    allUsersCache=loadData(); // 備援：使用本機資料
   }
   setUser(id,u);renderSurvey(u.progress);showView('surveyView');
 }
