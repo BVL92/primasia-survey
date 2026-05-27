@@ -256,6 +256,9 @@ html,body{
   .survey-card{max-width:460px;max-height:65vh;}
 }
 </style>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -395,6 +398,19 @@ html,body{
 
 <script>
 
+// ── Firebase 雲端資料庫 ──
+// 完成 Firebase 建立後，請將下方設定替換為你的專案設定值
+const FIREBASE_CONFIG = {
+  apiKey: "REPLACE_WITH_YOUR_API_KEY",
+  authDomain: "REPLACE_WITH_YOUR_PROJECT_ID.firebaseapp.com",
+  projectId: "REPLACE_WITH_YOUR_PROJECT_ID",
+  storageBucket: "REPLACE_WITH_YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "REPLACE_WITH_YOUR_SENDER_ID",
+  appId: "REPLACE_WITH_YOUR_APP_ID"
+};
+firebase.initializeApp(FIREBASE_CONFIG);
+const db = firebase.firestore();
+
 const STORE_KEY='primasia_inv_survey';
 const CREDS={'Y123123113':'1qaz2wsx','A100000001':'test1234','B200000002':'test1234','C300000003':'test1234','D400000004':'test1234','T100000001':'1qaz2wsx','T100000002':'1qaz2wsx','T100000003':'1qaz2wsx','T100000004':'1qaz2wsx','T100000005':'1qaz2wsx','T100000006':'1qaz2wsx','T100000007':'1qaz2wsx','T100000008':'1qaz2wsx','T100000009':'1qaz2wsx','T100000010':'1qaz2wsx','T100000011':'1qaz2wsx','T100000012':'1qaz2wsx','T100000013':'1qaz2wsx','T100000014':'1qaz2wsx','T100000015':'1qaz2wsx','T100000016':'1qaz2wsx','T100000017':'1qaz2wsx','T100000018':'1qaz2wsx','T100000019':'1qaz2wsx','T100000020':'1qaz2wsx'};
 
@@ -437,7 +453,12 @@ let currentUser=null,selectedOpts=[];
 function loadData(){try{return JSON.parse(localStorage.getItem(STORE_KEY))||{users:{}};}catch(e){return{users:{}};}}
 function saveData(d){localStorage.setItem(STORE_KEY,JSON.stringify(d));}
 function getUser(id){const d=loadData();if(!d.users[id])d.users[id]={progress:0,answers:{},dismissedUntil:null,completedAt:null,firstLogin:new Date().toISOString(),loginCount:0};return d.users[id];}
-function setUser(id,u){const d=loadData();d.users[id]=u;saveData(d);}
+function setUser(id,u){
+  // 1. 本機 localStorage（離線備份）
+  const d=loadData();d.users[id]=u;saveData(d);
+  // 2. 同步寫入 Firebase Firestore（集中收集）
+  db.collection('surveys').doc(id).set(u).catch(e=>console.warn('雲端儲存失敗:',e));
+}
 
 function getDistribution(qi){
   const data=loadData();const q=QUESTIONS[qi];
