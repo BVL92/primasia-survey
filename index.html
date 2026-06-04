@@ -481,6 +481,30 @@ function getDistribution(qi){
 function showView(v){document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));document.getElementById(v).classList.add('active');window.scrollTo(0,0);}
 function backToLogin(){currentUser=null;document.getElementById('loginId').value='';document.getElementById('loginPwd').value='';showView('loginView');}
 
+// ══════════════════════════════════════════════════════
+//  JavaScript Interface Bridge — APP 串接通知機制
+//  支援：React Native WebView / iOS WKWebView / Android
+// ══════════════════════════════════════════════════════
+function notifyNative(type, payload){
+  const data = Object.assign({type: type}, payload || {});
+  const msg  = JSON.stringify(data);
+  try{
+    // ① React Native WebView（現行 APP 主要使用，與 estockking 相容）
+    if(window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage==='function'){
+      window.ReactNativeWebView.postMessage(msg); return;
+    }
+    // ② iOS WKWebView（handler 名稱：surveyClosed）
+    if(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.surveyClosed){
+      window.webkit.messageHandlers.surveyClosed.postMessage(data); return;
+    }
+    // ③ Android 原生介面（addJavascriptInterface，bridge 名稱：AndroidBridge）
+    if(window.AndroidBridge && typeof window.AndroidBridge.onSurveyEvent==='function'){
+      window.AndroidBridge.onSurveyEvent(msg); return;
+    }
+  }catch(_){}
+  // ④ 純瀏覽器 fallback：無需通知，維持原有畫面切換行為
+}
+
 async function doLogin(){
   const id=document.getElementById('loginId').value.trim();
   const pw=document.getElementById('loginPwd').value;
@@ -488,7 +512,12 @@ async function doLogin(){
   if(!CREDS[id]||CREDS[id]!==pw){err.style.display='block';return;}
   err.style.display='none';currentUser=id;
   const u=getUser(id);u.loginCount=(u.loginCount||0)+1;u.lastLogin=new Date().toISOString();
-  if(u.progress>=QUESTIONS.length){setUser(id,u);return;}
+  if(u.progress>=QUESTIONS.length){
+    setUser(id,u);
+    // 【串接點 A】已完成過問卷的用戶登入 → 通知 APP 關閉 WebView
+    notifyNative('SURVEY_ALREADY_DONE',{userId:id,completedAt:u.completedAt||null});
+    return;
+  }
   if(u.dismissedUntil){
     const until=new Date(u.dismissedUntil);
     if(new Date()<until){
@@ -592,9 +621,16 @@ function submitAnswer(){
     u.progress=QUESTIONS.length; // 跳到最後，標記完成
   }
 
-  if(u.progress>=QUESTIONS.length)u.completedAt=new Date().toISOString();
-  setUser(currentUser,u);
-  backToLogin();
+  if(u.progress>=QUESTIONS.length){
+    u.completedAt=new Date().toISOString();
+    setUser(currentUser,u);
+    // 【串接點 B】問卷全部完成 → 通知 APP 關閉 WebView
+    notifyNative('SURVEY_COMPLETED',{userId:currentUser,completedAt:u.completedAt});
+    setTimeout(backToLogin,400); // 短暫延遲確保通知送出
+  }else{
+    setUser(currentUser,u);
+    backToLogin();
+  }
 }
 
 function dismissSurvey(){
@@ -603,6 +639,8 @@ function dismissSurvey(){
   u.dismissedUntil=until.toISOString();setUser(currentUser,u);
   const m=until.getMonth()+1,dy=until.getDate();
   document.getElementById('dismissedUntilText').textContent=`將於 ${m} 月 ${dy} 日後再次提醒`;
+  // 【串接點 C】用戶選擇暫不填寫 → 通知 APP 關閉 WebView
+  notifyNative('SURVEY_DISMISSED',{userId:currentUser,dismissedUntil:u.dismissedUntil});
   currentUser=null;showView('dismissedView');
 }
 </script>
