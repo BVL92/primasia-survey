@@ -211,6 +211,20 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+  /* ── BROKER PICKER ── */
+  .broker-card { border:1.5px solid var(--border); border-radius:10px; padding:12px; cursor:pointer; transition:all .15s; }
+  .broker-card:hover:not(.added) { border-color:var(--primary-light); background:#f0f6ff; }
+  .broker-card.added { border-color:var(--success); background:#f0fff4; cursor:default; opacity:.8; }
+  .broker-name { font-size:13px; font-weight:700; color:var(--text); }
+  .broker-url { font-size:11px; color:var(--text-muted); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .broker-add { font-size:11px; color:var(--primary-light); font-weight:600; margin-top:5px; }
+  .broker-badge { font-size:11px; color:var(--success); font-weight:700; margin-top:5px; }
+
+  /* ── VALIDITY BADGE ── */
+  .pill-valid   { background:#dcfce7; color:#166534; }
+  .pill-expired { background:#fee2e2; color:#991b1b; }
+  .pill-pending { background:#fef9c3; color:#854d0e; }
+
   .empty-state { text-align: center; padding: 48px 24px; color: var(--text-muted); }
   .empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; }
   .empty-state p { font-size: 14px; }
@@ -498,7 +512,7 @@
           <table id="usersTable">
             <thead>
               <tr>
-                <th>帳號</th><th>姓名</th><th>Email</th><th>角色</th><th>狀態</th><th>建立日期</th><th>最後登入</th><th>操作</th>
+                <th>帳號</th><th>姓名</th><th>Email</th><th>角色</th><th>狀態</th><th>使用期間</th><th>建立日期</th><th>最後登入</th><th>操作</th>
               </tr>
             </thead>
             <tbody id="usersTableBody"></tbody>
@@ -537,22 +551,13 @@
 <!-- Add Competitor -->
 <div class="modal-overlay" id="addCompModal">
   <div class="modal comp-modal">
-    <h3>🏢 新增監控對手</h3>
-    <div class="form-group">
-      <label>券商名稱</label>
-      <input type="text" id="newCompName" placeholder="例：富邦證券、元大證券…" />
-    </div>
-    <div class="form-group">
-      <label>官方網站</label>
-      <input type="text" id="newCompUrl" placeholder="https://www.example.com.tw" />
-    </div>
-    <div class="form-group">
-      <label>備註</label>
-      <input type="text" id="newCompNote" placeholder="選填備註" />
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeModal('addCompModal')">取消</button>
-      <button class="btn btn-primary" onclick="addCompetitor()">新增</button>
+    <h3>🏢 選擇監控券商</h3>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">點擊券商即可加入監控清單（最多 5 家）</p>
+    <input type="text" id="brokerSearch" placeholder="🔍 搜尋券商名稱…" oninput="renderBrokerPicker()"
+      style="width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;margin-bottom:14px;outline:none">
+    <div id="brokerPickerGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;max-height:340px;overflow-y:auto;padding-right:4px"></div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn btn-outline" onclick="closeModal('addCompModal')">關閉</button>
     </div>
   </div>
 </div>
@@ -672,6 +677,16 @@
           <option value="inactive">停用</option>
         </select>
       </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label>使用開始日</label>
+          <input type="date" id="uValidFrom" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:7px;font-size:14px" />
+        </div>
+        <div class="form-group">
+          <label>使用結束日</label>
+          <input type="date" id="uValidTo" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:7px;font-size:14px" />
+        </div>
+      </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-outline" onclick="closeModal('addUserModal')">取消</button>
         <button type="button" class="btn btn-primary" onclick="saveUser()">儲存</button>
@@ -691,24 +706,62 @@ const DB = {
   set(k, v)   { localStorage.setItem('cm_'+k, JSON.stringify(v)); },
 };
 
+// 每人獨立的資料 key
+function userKey(k) { return currentUser ? k + '_' + currentUser.id : k; }
+
+// 台灣券商完整名單
+const BROKER_LIST = [
+  { name:'元大證券',     url:'https://www.yuanta.com.tw',        fb:'https://www.facebook.com/Yuanta.Securities.tw', line:'https://lin.ee/yLnrqjT', ig:'https://www.instagram.com/yuanta_official', yt:'https://www.youtube.com/c/YuantaSecurities' },
+  { name:'凱基證券',     url:'https://www.kgieworld.com.tw',      fb:'https://www.facebook.com/KGISecurities', line:'', ig:'', yt:'https://www.youtube.com/c/KGISecurities' },
+  { name:'富邦證券',     url:'https://www.fbs.com.tw',            fb:'https://www.facebook.com/fubon.securities', line:'', ig:'', yt:'https://www.youtube.com/c/FubonSecurities' },
+  { name:'國泰證券',     url:'https://www.cathaysec.com.tw',      fb:'https://www.facebook.com/cathaysec', line:'', ig:'', yt:'' },
+  { name:'中信證券',     url:'https://www.ctbcsec.com.tw',        fb:'https://www.facebook.com/ctbcsec', line:'', ig:'', yt:'' },
+  { name:'永豐金證券',   url:'https://www.sinotrade.com.tw',      fb:'https://www.facebook.com/sinotrade.official', line:'https://lin.ee/sinotrade', ig:'', yt:'https://www.youtube.com/c/sinotrade' },
+  { name:'台新證券',     url:'https://www.tssec.com.tw',          fb:'https://www.facebook.com/tssec', line:'', ig:'', yt:'' },
+  { name:'統一證券',     url:'https://www.psc.com.tw',            fb:'https://www.facebook.com/president.securities', line:'', ig:'', yt:'' },
+  { name:'群益證券',     url:'https://www.capitalgroup.com.tw',   fb:'https://www.facebook.com/capitalgroup.tw', line:'', ig:'', yt:'https://www.youtube.com/c/CapitalSecurities' },
+  { name:'兆豐證券',     url:'https://www.megasec.com.tw',        fb:'https://www.facebook.com/megasec', line:'', ig:'', yt:'' },
+  { name:'第一金證券',   url:'https://www.firstsec.com.tw',       fb:'https://www.facebook.com/firstsec', line:'', ig:'', yt:'' },
+  { name:'玉山證券',     url:'https://www.esunstock.com.tw',      fb:'https://www.facebook.com/esunstock', line:'https://lin.ee/esunstock', ig:'', yt:'' },
+  { name:'口袋證券',     url:'https://www.pocket.com.tw',         fb:'https://www.facebook.com/pocketmoney.tw', line:'https://lin.ee/pocket', ig:'https://www.instagram.com/pocket_sec', yt:'' },
+  { name:'新光證券',     url:'https://www.sksecrities.com.tw',    fb:'https://www.facebook.com/sksecrities', line:'', ig:'', yt:'' },
+  { name:'日盛證券',     url:'https://www.jihsun.com.tw',         fb:'https://www.facebook.com/jihsunsec', line:'', ig:'', yt:'' },
+  { name:'華南永昌證券', url:'https://www.entrust.com.tw',        fb:'https://www.facebook.com/entrust.sec', line:'', ig:'', yt:'' },
+  { name:'宏遠證券',     url:'https://www.esafe.com.tw',          fb:'', line:'', ig:'', yt:'' },
+  { name:'合庫證券',     url:'https://www.tcfhc-sec.com.tw',      fb:'https://www.facebook.com/tcfhcsec', line:'', ig:'', yt:'' },
+  { name:'大昌證券',     url:'https://www.tachengsec.com.tw',     fb:'', line:'', ig:'', yt:'' },
+  { name:'福邦證券',     url:'https://www.fubonsec.com.tw',       fb:'', line:'', ig:'', yt:'' },
+  { name:'台灣企銀證券', url:'https://www.tachengsec.com.tw',     fb:'', line:'', ig:'', yt:'' },
+  { name:'摩根大通',     url:'https://www.jpmorgan.com/tw/en',    fb:'', line:'', ig:'', yt:'' },
+  { name:'國際中信',     url:'https://www.upacsec.com.tw',        fb:'', line:'', ig:'', yt:'' },
+  { name:'安泰證券',     url:'https://www.entiesec.com.tw',       fb:'', line:'', ig:'', yt:'' },
+  { name:'大展證券',     url:'https://www.tachinasec.com.tw',     fb:'', line:'', ig:'', yt:'' },
+];
+
 // Init default data
 function initData() {
+  // 版本升級強制重置使用者清單
+  if (DB.get('_uver', 0) < 3) {
+    DB.set('_uver', 3);
+    DB.set('users', null); // 強制重建
+  }
   if (!DB.get('users', null)) {
     DB.set('users', [
-      { id:'u1', username:'admin', password:'@168168', displayName:'系統管理員', email:'admin@broker.com.tw', role:'admin', status:'active', createdAt:'2024-01-01', lastLogin:null },
-      { id:'u2', username:'marketing', password:'@168168', displayName:'行銷專員', email:'mkt@broker.com.tw', role:'user', status:'active', createdAt:'2024-01-15', lastLogin:null },
+      { id:'u_vincnetlee', username:'vincnetlee', password:'@Etj601217008', displayName:'Vincent Lee', email:'vincnetlee@primasia.com', role:'admin', status:'active', createdAt:'2026-06-05', lastLogin:null, validFrom:'2026-06-05', validTo:'2027-06-04' },
+      { id:'u_jameslin',   username:'jameslin',   password:'@Etj23226260',  displayName:'James Lin',    email:'jameslin@primasia.com',   role:'admin', status:'active', createdAt:'2026-06-05', lastLogin:null, validFrom:'2026-06-05', validTo:'2027-06-04' },
+      { id:'u_markliu',    username:'markliu',    password:'@168168', displayName:'Mark Liu',      email:'markliu@primasia.com',    role:'user',  status:'active', createdAt:'2026-06-05', lastLogin:null, validFrom:'2026-06-05', validTo:'2027-06-04' },
+      { id:'u_glorychen',  username:'glorychen',  password:'@168168', displayName:'Glory Chen',    email:'glorychen@primasia.com',  role:'user',  status:'active', createdAt:'2026-06-05', lastLogin:null, validFrom:'2026-06-05', validTo:'2027-06-04' },
+      { id:'u_frankycho',  username:'frankycho',  password:'@168168', displayName:'Franky Cho',    email:'frankycho@primasia.com',  role:'user',  status:'active', createdAt:'2026-06-05', lastLogin:null, validFrom:'2026-06-05', validTo:'2027-06-04' },
+      { id:'u_yclam',      username:'yclam',      password:'@168168', displayName:'YC Lam',        email:'yclam@primasia.com',      role:'user',  status:'active', createdAt:'2026-06-05', lastLogin:null, validFrom:'2026-06-05', validTo:'2027-06-04' },
+      { id:'u_stephentung',username:'stephentung',password:'@168168', displayName:'Stephen Tung',  email:'stephentung@primasia.com',role:'user',  status:'active', createdAt:'2026-06-05', lastLogin:null, validFrom:'2026-06-05', validTo:'2027-06-04' },
+      { id:'u_peterlee',   username:'peterlee',   password:'@168168', displayName:'Peter Lee',     email:'peterlee@primasia.com',   role:'user',  status:'active', createdAt:'2026-06-05', lastLogin:null, validFrom:'2026-06-05', validTo:'2027-06-04' },
+      { id:'u_tomkang',    username:'tomkang',    password:'@168168', displayName:'Tom Kang',      email:'tomkang@primasia.com',    role:'user',  status:'active', createdAt:'2026-06-05', lastLogin:null, validFrom:'2026-06-05', validTo:'2027-06-04' },
+      { id:'u_chloechou',  username:'chloechou',  password:'@168168', displayName:'Chloe Chou',    email:'chloechou@primasia.com',  role:'user',  status:'active', createdAt:'2026-06-05', lastLogin:null, validFrom:'2026-06-05', validTo:'2027-06-04' },
+      { id:'u_lyndalee',   username:'lyndalee',   password:'@168168', displayName:'Lynda Lee',     email:'lyndalee@primasia.com',   role:'user',  status:'active', createdAt:'2026-06-05', lastLogin:null, validFrom:'2026-06-05', validTo:'2027-06-04' },
     ]);
   }
   if (!DB.get('loginLogs', null)) DB.set('loginLogs', []);
-  if (!DB.get('competitors', null)) DB.set('competitors', [
-    { id:'c_default1', name:'國泰證券', url:'https://www.cathaysec.com.tw', note:'', addedBy:'系統預設', addedAt:'2026-01-01' },
-    { id:'c_default2', name:'口袋證券', url:'https://www.pocketmoney.com.tw', note:'', addedBy:'系統預設', addedAt:'2026-01-01' },
-    { id:'c_default3', name:'新光證券', url:'https://www.sksecrities.com.tw', note:'', addedBy:'系統預設', addedAt:'2026-01-01' },
-    { id:'c_default4', name:'元大證券', url:'https://www.yuanta.com.tw', note:'', addedBy:'系統預設', addedAt:'2026-01-01' },
-    { id:'c_default5', name:'永豐金證券', url:'https://www.sinotrade.com.tw', note:'', addedBy:'系統預設', addedAt:'2026-01-01' },
-  ]);
-  if (!DB.get('activities', null)) DB.set('activities', []);
-  if (!DB.get('channels', null)) DB.set('channels', ['官網','Facebook','LINE OA','Instagram','YouTube','Google Ads','新開戶活動','ETF活動','KOL合作']);
+  // competitors / activities / channels 改為每人獨立，登入後才建立
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -723,6 +776,18 @@ function doLogin() {
   const users = DB.get('users', []);
   const user = users.find(x => x.username === u && x.password === p && x.status === 'active');
   if (!user) { document.getElementById('loginError').style.display = 'block'; return; }
+  // 驗證使用期間
+  const td = today();
+  if (user.validFrom && td < user.validFrom) {
+    const el = document.getElementById('loginError');
+    el.textContent = `帳號尚未開通（開始日：${user.validFrom}）`;
+    el.style.display = 'block'; return;
+  }
+  if (user.validTo && td > user.validTo) {
+    const el = document.getElementById('loginError');
+    el.textContent = `帳號使用期限已到期（結束日：${user.validTo}）`;
+    el.style.display = 'block'; return;
+  }
   currentUser = user;
   // Update lastLogin
   const updated = users.map(x => x.id === user.id ? { ...x, lastLogin: now() } : x);
@@ -759,6 +824,10 @@ function bootApp() {
   document.querySelectorAll('.admin-only').forEach(el => {
     el.style.display = currentUser.role === 'admin' ? '' : 'none';
   });
+  // 初始化使用者個人資料
+  if (!DB.get(userKey('competitors'), null)) DB.set(userKey('competitors'), []);
+  if (!DB.get(userKey('activities'),  null)) DB.set(userKey('activities'),  []);
+  if (!DB.get(userKey('channels'),    null)) DB.set(userKey('channels'), ['官網','Facebook','LINE OA','Instagram','YouTube','Google Ads','新開戶活動','ETF活動','KOL合作']);
   showView('dashboard');
 }
 
@@ -787,9 +856,9 @@ function showView(name) {
 //  DASHBOARD
 // ═══════════════════════════════════════════════════════════
 function renderDashboard() {
-  const comps = DB.get('competitors', []);
-  const activities = DB.get('activities', []);
-  const channels = DB.get('channels', []);
+  const comps = DB.get(userKey('competitors'), []);
+  const activities = DB.get(userKey('activities'), []);
+  const channels = DB.get(userKey('channels'), []);
   const oneMonthAgo = new Date(); oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
   const recent = activities.filter(a => new Date(a.date) >= oneMonthAgo);
 
@@ -841,8 +910,8 @@ const CHANNEL_CONFIG = {
 };
 
 function renderCompetitors() {
-  const comps = DB.get('competitors', []);
-  const channels = DB.get('channels', []);
+  const comps = DB.get(userKey('competitors'), []);
+  const channels = DB.get(userKey('channels'), []);
   let html = '';
   for (let i = 0; i < 5; i++) {
     const c = comps[i];
@@ -870,43 +939,54 @@ function renderCompetitors() {
 }
 
 function openAddCompModal() {
-  const comps = DB.get('competitors', []);
-  if (comps.length >= 5) { showToast('已達最多 5 家上限', 'error'); return; }
-  document.getElementById('newCompName').value = '';
-  document.getElementById('newCompUrl').value = '';
-  document.getElementById('newCompNote').value = '';
+  if (document.getElementById('brokerSearch')) document.getElementById('brokerSearch').value = '';
+  renderBrokerPicker();
   openModal('addCompModal');
 }
 
-function addCompetitor() {
-  const name = document.getElementById('newCompName').value.trim();
-  if (!name) { showToast('請輸入券商名稱', 'error'); return; }
-  const comps = DB.get('competitors', []);
-  if (comps.find(c => c.name === name)) { showToast('此券商已在監控清單', 'error'); return; }
-  comps.push({ id:'c'+Date.now(), name, url:document.getElementById('newCompUrl').value.trim(), note:document.getElementById('newCompNote').value.trim(), addedBy:currentUser.displayName, addedAt:now() });
-  DB.set('competitors', comps);
-  closeModal('addCompModal');
+function renderBrokerPicker() {
+  const comps = DB.get(userKey('competitors'), []);
+  const q = (document.getElementById('brokerSearch')?.value || '').trim().toLowerCase();
+  const list = q ? BROKER_LIST.filter(b => b.name.includes(q)) : BROKER_LIST;
+  document.getElementById('brokerPickerGrid').innerHTML = list.map(b => {
+    const added = comps.some(c => c.name === b.name);
+    return `<div class="broker-card ${added?'added':''}" onclick="${added?'':'pickBroker(\''+b.name+'\')'}">
+      <div class="broker-name">${b.name}</div>
+      <div class="broker-url">${b.url.replace('https://','')}</div>
+      ${added?'<div class="broker-badge">✓ 已加入</div>':'<div class="broker-add">＋ 加入監控</div>'}
+    </div>`;
+  }).join('');
+}
+
+function pickBroker(name) {
+  const comps = DB.get(userKey('competitors'), []);
+  if (comps.length >= 5) { showToast('已達最多 5 家上限', 'error'); return; }
+  const b = BROKER_LIST.find(x => x.name === name);
+  if (!b || comps.some(c=>c.name===name)) return;
+  comps.push({ id:'c'+Date.now(), name:b.name, url:b.url, fb:b.fb||'', line:b.line||'', ig:b.ig||'', yt:b.yt||'', note:'', addedBy:currentUser.displayName, addedAt:today() });
+  DB.set(userKey('competitors'),comps);
+  renderBrokerPicker();
   renderCompetitors();
-  showToast('已新增 '+name);
+  showToast('✅ 已加入監控：'+name);
 }
 
 function removeCompetitor(id) {
   if (!confirm('確定要移除此監控對手？相關動態資料將一併刪除。')) return;
-  let comps = DB.get('competitors', []);
+  let comps = DB.get(userKey('competitors'), []);
   comps = comps.filter(c => c.id !== id);
-  DB.set('competitors', comps);
-  let activities = DB.get('activities', []);
+  DB.set(userKey('competitors'),comps);
+  let activities = DB.get(userKey('activities'), []);
   activities = activities.filter(a => a.compId !== id);
-  DB.set('activities', activities);
+  DB.set(userKey('activities'),activities);
   renderCompetitors();
   showToast('已移除');
 }
 
 function toggleChannel(name) {
-  let channels = DB.get('channels', []);
+  let channels = DB.get(userKey('channels'), []);
   if (channels.includes(name)) channels = channels.filter(c => c !== name);
   else channels.push(name);
-  DB.set('channels', channels);
+  DB.set(userKey('channels'),channels);
   renderCompetitors();
 }
 
@@ -927,7 +1007,7 @@ function hlText(text, keywords) {
 }
 
 function renderActivityItem(a, compact=false, keywords=[]) {
-  const comps = DB.get('competitors', []);
+  const comps = DB.get(userKey('competitors'), []);
   const comp = comps.find(c => c.id === a.compId);
   const ch = CHANNEL_CONFIG[a.channel] || { icon:'📌' };
   const col = CHANNEL_COLORS[a.channel] || '#666';
@@ -1000,14 +1080,14 @@ function getActiveKeywords() {
 }
 
 function renderFeed() {
-  const comps = DB.get('competitors', []);
+  const comps = DB.get(userKey('competitors'), []);
   const cf = document.getElementById('feedCompFilter');
   cf.innerHTML = '<option value="">所有對手</option>' + comps.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
   const keywords    = getActiveKeywords();
   const compFilter  = document.getElementById('feedCompFilter').value;
   const channelFilter = document.getElementById('feedChannelFilter').value;
   const typeFilter  = document.getElementById('feedTypeFilter').value;
-  let activities = DB.get('activities', []).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  let activities = DB.get(userKey('activities'), []).sort((a,b)=>new Date(b.date)-new Date(a.date));
   if (keywords.length) activities = activities.filter(a =>
     keywords.some(kw => a.title.toLowerCase().includes(kw) || a.desc.toLowerCase().includes(kw))
   );
@@ -1031,8 +1111,8 @@ function generateFeedPDF() {
   const compFilter  = document.getElementById('feedCompFilter').value;
   const channelFilter = document.getElementById('feedChannelFilter').value;
   const typeFilter  = document.getElementById('feedTypeFilter').value;
-  const comps = DB.get('competitors', []);
-  let activities = DB.get('activities', []).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const comps = DB.get(userKey('competitors'), []);
+  let activities = DB.get(userKey('activities'), []).sort((a,b)=>new Date(b.date)-new Date(a.date));
   if (keywords.length) activities = activities.filter(a =>
     keywords.some(kw => a.title.toLowerCase().includes(kw) || a.desc.toLowerCase().includes(kw))
   );
@@ -1111,7 +1191,7 @@ function generateFeedPDF() {
 }
 
 function openAddActivityModal() {
-  const comps = DB.get('competitors', []);
+  const comps = DB.get(userKey('competitors'), []);
   if (!comps.length) { showToast('請先設定監控對手', 'error'); return; }
   document.getElementById('actComp').innerHTML = comps.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
   document.getElementById('actTitle').value = '';
@@ -1125,9 +1205,9 @@ function addActivity() {
   const title = document.getElementById('actTitle').value.trim();
   const desc = document.getElementById('actDesc').value.trim();
   if (!title) { showToast('請輸入標題', 'error'); return; }
-  const activities = DB.get('activities', []);
+  const activities = DB.get(userKey('activities'), []);
   activities.unshift({ id:'a'+Date.now(), compId:document.getElementById('actComp').value, channel:document.getElementById('actChannel').value, title, desc, type:document.getElementById('actType').value, date:document.getElementById('actDate').value, url:document.getElementById('actUrl').value.trim(), addedBy:currentUser.displayName });
-  DB.set('activities', activities);
+  DB.set(userKey('activities'),activities);
   closeModal('addActivityModal');
   renderFeed();
   showToast('已新增動態');
@@ -1135,7 +1215,7 @@ function addActivity() {
 
 function deleteActivity(id) {
   if (!confirm('確定刪除此筆動態？')) return;
-  DB.set('activities', DB.get('activities',[]).filter(a=>a.id!==id));
+  DB.set(userKey('activities'),DB.get(userKey('activities'),[]).filter(a=>a.id!==id));
   renderFeed();
   showToast('已刪除');
 }
@@ -1154,11 +1234,11 @@ const mockTemplates = [
 ];
 
 function simulateFetch() {
-  const comps = DB.get('competitors', []);
+  const comps = DB.get(userKey('competitors'), []);
   if (!comps.length) { showToast('請先設定監控對手', 'error'); return; }
   showToast('🔄 正在模擬抓取資料…');
   setTimeout(() => {
-    const activities = DB.get('activities', []);
+    const activities = DB.get(userKey('activities'), []);
     let added = 0;
     comps.forEach(c => {
       const count = 3 + Math.floor(Math.random()*4);
@@ -1171,7 +1251,7 @@ function simulateFetch() {
         added++;
       }
     });
-    DB.set('activities', activities);
+    DB.set(userKey('activities'),activities);
     renderFeed();
     showToast(`✅ 已抓取 ${added} 筆同業動態`, 'success');
   }, 1200);
@@ -1181,8 +1261,8 @@ function simulateFetch() {
 //  REPORT
 // ═══════════════════════════════════════════════════════════
 function generateReport() {
-  const comps = DB.get('competitors', []);
-  const activities = DB.get('activities', []);
+  const comps = DB.get(userKey('competitors'), []);
+  const activities = DB.get(userKey('activities'), []);
   if (!comps.length) {
     document.getElementById('reportContent').innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><p>請先設定監控對手並收集動態資料</p></div>';
     return;
@@ -1254,8 +1334,8 @@ function buildRecommendations(comps, recent, totalPromo, totalKOL, totalETF) {
 
 // ─── 監控報告 PDF ───
 function generateReportPDF() {
-  const comps = DB.get('competitors', []);
-  const activities = DB.get('activities', []);
+  const comps = DB.get(userKey('competitors'), []);
+  const activities = DB.get(userKey('activities'), []);
   if (!comps.length) { showToast('請先設定監控對手並收集動態資料', 'error'); return; }
   const oneMonthAgo = new Date(); oneMonthAgo.setDate(oneMonthAgo.getDate()-30);
   const recent = activities.filter(a => new Date(a.date)>=oneMonthAgo);
@@ -1454,8 +1534,8 @@ function removeEmailTag(btn, email) {
 function sendReport() {
   if (!emailRecipients.length) { showToast('請至少輸入一個收件人 Email', 'error'); return; }
   const subject = encodeURIComponent(document.getElementById('emailSubject').value);
-  const comps = DB.get('competitors', []);
-  const activities = DB.get('activities', []);
+  const comps = DB.get(userKey('competitors'), []);
+  const activities = DB.get(userKey('activities'), []);
   const body = buildEmailBody(comps, activities);
   const mailto = `mailto:${emailRecipients.join(',')}?subject=${subject}&body=${encodeURIComponent(body)}`;
   window.location.href = mailto;
@@ -1487,20 +1567,29 @@ let editingUserId = null;
 
 function renderUsers() {
   const users = DB.get('users', []);
-  document.getElementById('usersTableBody').innerHTML = users.map(u => `
-    <tr>
+  const td = today();
+  document.getElementById('usersTableBody').innerHTML = users.map(u => {
+    let vpill = '', vlabel = '';
+    if (u.validFrom && u.validTo) {
+      if (td < u.validFrom) { vpill='pill-pending'; vlabel=`待開通 ${u.validFrom}`; }
+      else if (td > u.validTo) { vpill='pill-expired'; vlabel=`已到期 ${u.validTo}`; }
+      else { vpill='pill-valid'; vlabel=`${u.validFrom} ~ ${u.validTo}`; }
+    } else { vpill='pill-info'; vlabel='未設定'; }
+    return `<tr>
       <td><strong>${u.username}</strong></td>
       <td>${u.displayName}</td>
-      <td>${u.email}</td>
+      <td style="font-size:12px">${u.email}</td>
       <td><span class="pill ${u.role==='admin'?'pill-admin':'pill-user'}">${u.role==='admin'?'管理員':'一般使用者'}</span></td>
       <td><span class="pill ${u.status==='active'?'pill-active':'pill-inactive'}">${u.status==='active'?'啟用':'停用'}</span></td>
+      <td><span class="pill ${vpill}" style="font-size:11px">${vlabel}</span></td>
       <td>${u.createdAt}</td>
       <td>${u.lastLogin||'—'}</td>
       <td><div class="action-btns">
         <button class="btn btn-sm btn-outline" onclick="editUser('${u.id}')">編輯</button>
         ${u.id!==currentUser.id?`<button class="btn btn-sm btn-danger" onclick="deleteUser('${u.id}')">刪除</button>`:''}
       </div></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
 function openAddUserModal() {
@@ -1509,6 +1598,8 @@ function openAddUserModal() {
   ['uUsername','uDisplayName','uEmail','uPassword'].forEach(id => document.getElementById(id).value='');
   document.getElementById('uRole').value = 'user';
   document.getElementById('uStatus').value = 'active';
+  document.getElementById('uValidFrom').value = today();
+  document.getElementById('uValidTo').value = '';
   document.getElementById('uPassGroup').style.display = '';
   document.getElementById('uUsername').disabled = false;
   openModal('addUserModal');
@@ -1525,6 +1616,8 @@ function editUser(id) {
   document.getElementById('uEmail').value = user.email;
   document.getElementById('uRole').value = user.role;
   document.getElementById('uStatus').value = user.status;
+  document.getElementById('uValidFrom').value = user.validFrom || '';
+  document.getElementById('uValidTo').value = user.validTo || '';
   document.getElementById('uPassword').value = '';
   document.getElementById('uPassGroup').style.display = '';
   openModal('addUserModal');
@@ -1537,15 +1630,17 @@ function saveUser() {
   const role = document.getElementById('uRole').value;
   const status = document.getElementById('uStatus').value;
   const password = document.getElementById('uPassword').value;
+  const validFrom = document.getElementById('uValidFrom').value;
+  const validTo = document.getElementById('uValidTo').value;
   if (!username || !displayName) { showToast('請填寫必填欄位', 'error'); return; }
   let users = DB.get('users', []);
   if (editingUserId) {
-    users = users.map(u => u.id===editingUserId ? { ...u, displayName, email, role, status, ...(password?{password}:{}) } : u);
+    users = users.map(u => u.id===editingUserId ? { ...u, displayName, email, role, status, validFrom, validTo, ...(password?{password}:{}) } : u);
     showToast('已更新使用者資料');
   } else {
     if (!password) { showToast('請設定密碼', 'error'); return; }
     if (users.find(u=>u.username===username)) { showToast('帳號已存在', 'error'); return; }
-    users.push({ id:'u'+Date.now(), username, password, displayName, email, role, status, createdAt:today(), lastLogin:null });
+    users.push({ id:'u'+Date.now(), username, password, displayName, email, role, status, validFrom, validTo, createdAt:today(), lastLogin:null });
     showToast('已新增使用者');
   }
   DB.set('users', users);
