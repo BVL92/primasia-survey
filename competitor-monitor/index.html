@@ -172,12 +172,15 @@
   .report-stat-cell { background: var(--bg); border-radius: 8px; padding: 12px 14px; min-width: 0; }
   .report-stat-cell .s-label { font-size: 11px; color: var(--text-muted); }
   .report-stat-cell .s-value { font-size: 22px; font-weight: 700; color: var(--primary); margin-top: 4px; }
-  /* ── REPORT 按鈕列 sticky ── */
+  /* ── REPORT 按鈕列 ── */
   #viewReport .page-header {
-    position: sticky; top: 0; z-index: 50;
-    background: var(--bg); padding: 10px 0 10px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 20px;
+    background: var(--bg);
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 24px;
+  }
+  #viewReport .page-header > div:last-child {
+    display: flex; gap: 8px; flex-wrap: wrap;
   }
 
   /* ── EMAIL MODAL ── */
@@ -304,9 +307,8 @@
     .page-header > div:last-child, .page-header > button { flex-wrap: wrap; gap: 6px; }
     /* Report stat grid → 2 col on mobile */
     .report-stat-grid { grid-template-columns: repeat(2, 1fr) !important; }
-    /* Report sticky header 在手機上要加 top padding 讓 hamburger 不蓋到 */
-    #viewReport .page-header { top: 52px; padding: 8px 0 8px; }
-    /* Report buttons smaller on mobile */
+    /* Report page header mobile */
+    #viewReport .page-header { flex-direction: column; align-items: flex-start; gap: 10px; }
     #viewReport .page-header .btn { font-size: 12px; padding: 7px 10px; }
     /* Toast bottom clearance */
     .toast { bottom: 12px; right: 12px; left: 12px; right: 12px; font-size: 13px; }
