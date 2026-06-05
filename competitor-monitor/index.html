@@ -161,12 +161,24 @@
   .report-section { border-left: 3px solid var(--accent); padding-left: 16px; margin-bottom: 20px; }
   .report-section h4 { font-size: 14px; color: var(--primary); margin-bottom: 8px; }
   .report-section ul { padding-left: 16px; }
-  .report-section ul li { font-size: 13px; color: var(--text-muted); margin-bottom: 5px; line-height: 1.6; }
+  .report-section ul li { font-size: 13px; color: var(--text-muted); margin-bottom: 5px; line-height: 1.6; word-break: break-word; }
   .recommendation-box { background: linear-gradient(135deg, #f0f7ff, #e8f4e8); border-radius: 10px; padding: 20px; border: 1px solid #c3d9f0; }
   .recommendation-box h4 { color: var(--primary); margin-bottom: 12px; }
   .rec-item { display: flex; gap: 10px; margin-bottom: 10px; }
   .rec-num { width: 24px; height: 24px; background: var(--primary); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
   .rec-text { font-size: 13px; color: var(--text); line-height: 1.6; }
+  /* ── REPORT STAT GRID（響應式，非 inline）── */
+  .report-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .report-stat-cell { background: var(--bg); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+  .report-stat-cell .s-label { font-size: 11px; color: var(--text-muted); }
+  .report-stat-cell .s-value { font-size: 22px; font-weight: 700; color: var(--primary); margin-top: 4px; }
+  /* ── REPORT 按鈕列 sticky ── */
+  #viewReport .page-header {
+    position: sticky; top: 0; z-index: 50;
+    background: var(--bg); padding: 10px 0 10px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
 
   /* ── EMAIL MODAL ── */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 500; display: flex; align-items: center; justify-content: center; display: none; }
@@ -290,6 +302,12 @@
     .feed-controls select, .feed-controls input { font-size: 12px; }
     /* Buttons wrap */
     .page-header > div:last-child, .page-header > button { flex-wrap: wrap; gap: 6px; }
+    /* Report stat grid → 2 col on mobile */
+    .report-stat-grid { grid-template-columns: repeat(2, 1fr) !important; }
+    /* Report sticky header 在手機上要加 top padding 讓 hamburger 不蓋到 */
+    #viewReport .page-header { top: 52px; padding: 8px 0 8px; }
+    /* Report buttons smaller on mobile */
+    #viewReport .page-header .btn { font-size: 12px; padding: 7px 10px; }
     /* Toast bottom clearance */
     .toast { bottom: 12px; right: 12px; left: 12px; right: 12px; font-size: 13px; }
   }
@@ -1290,8 +1308,8 @@ function generateReport() {
   document.getElementById('reportContent').innerHTML = `
     <div class="card">
       <div class="card-title">📊 報告摘要 <span class="badge badge-accent">近 30 天</span></div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
-        ${[['監控對手',comps.length+'家'],['動態總筆數',recent.length+'筆'],['促銷活動',totalPromo+'則'],['KOL合作',totalKOL+'則'],['ETF相關',totalETF+'則']].map(([l,v])=>`<div style="background:var(--bg);border-radius:8px;padding:12px 16px"><div style="font-size:11px;color:var(--text-muted)">${l}</div><div style="font-size:22px;font-weight:700;color:var(--primary);margin-top:4px">${v}</div></div>`).join('')}
+      <div class="report-stat-grid">
+        ${[['監控對手',comps.length+'家'],['動態總筆數',recent.length+'筆'],['促銷活動',totalPromo+'則'],['KOL合作',totalKOL+'則'],['ETF相關',totalETF+'則']].map(([l,v])=>`<div class="report-stat-cell"><div class="s-label">${l}</div><div class="s-value">${v}</div></div>`).join('')}
       </div>
     </div>
     <div class="card">
