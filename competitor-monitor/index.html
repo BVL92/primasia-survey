@@ -267,8 +267,8 @@
     .page-header h2 { font-size: 18px; }
     /* Dashboard 2-col grid → 1-col */
     #viewDashboard > div[style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
-    /* Keyword 5-col → 2-col */
-    #viewFeed div[style*="grid-template-columns:repeat(5,1fr)"] { grid-template-columns: repeat(2,1fr) !important; }
+    /* Keyword grid → 2-col on mobile */
+    #kwInputGrid { grid-template-columns: repeat(2,1fr) !important; }
     /* Stats grid min smaller */
     .stats-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
     /* Activity item: no 3-col grid */
@@ -422,39 +422,14 @@
         </div>
       </div>
 
-      <!-- ── 5 組關鍵字 + 篩選器 ── -->
+      <!-- ── 20 組關鍵字 + 篩選器 ── -->
       <div class="card" style="padding:16px;margin-bottom:14px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
           <span style="font-size:14px;font-weight:700;color:var(--primary)">🔍 關鍵字搜尋</span>
-          <span style="font-size:12px;color:var(--text-muted)">最多同時查 5 組，符合任一關鍵字即顯示</span>
+          <span style="font-size:12px;color:var(--text-muted)">最多同時查 20 組，符合任一關鍵字即顯示</span>
           <button class="btn btn-sm btn-outline" onclick="clearAllKw()" style="margin-left:auto;font-size:11px;padding:4px 10px">清除全部</button>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px">
-          <div style="position:relative">
-            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:11px;font-weight:700;color:var(--primary-light);pointer-events:none">KW1</span>
-            <input type="text" id="kw1" placeholder="關鍵字 1" oninput="renderFeed()" autocomplete="off"
-              style="width:100%;padding:9px 10px 9px 38px;border:1.5px solid var(--border);border-radius:7px;font-size:13px">
-          </div>
-          <div style="position:relative">
-            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:11px;font-weight:700;color:var(--primary-light);pointer-events:none">KW2</span>
-            <input type="text" id="kw2" placeholder="關鍵字 2" oninput="renderFeed()" autocomplete="off"
-              style="width:100%;padding:9px 10px 9px 38px;border:1.5px solid var(--border);border-radius:7px;font-size:13px">
-          </div>
-          <div style="position:relative">
-            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:11px;font-weight:700;color:var(--primary-light);pointer-events:none">KW3</span>
-            <input type="text" id="kw3" placeholder="關鍵字 3" oninput="renderFeed()" autocomplete="off"
-              style="width:100%;padding:9px 10px 9px 38px;border:1.5px solid var(--border);border-radius:7px;font-size:13px">
-          </div>
-          <div style="position:relative">
-            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:11px;font-weight:700;color:var(--primary-light);pointer-events:none">KW4</span>
-            <input type="text" id="kw4" placeholder="關鍵字 4" oninput="renderFeed()" autocomplete="off"
-              style="width:100%;padding:9px 10px 9px 38px;border:1.5px solid var(--border);border-radius:7px;font-size:13px">
-          </div>
-          <div style="position:relative">
-            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:11px;font-weight:700;color:var(--primary-light);pointer-events:none">KW5</span>
-            <input type="text" id="kw5" placeholder="關鍵字 5" oninput="renderFeed()" autocomplete="off"
-              style="width:100%;padding:9px 10px 9px 38px;border:1.5px solid var(--border);border-radius:7px;font-size:13px">
-          </div>
+        <div id="kwInputGrid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px"></div>
         </div>
         <div class="feed-controls">
           <select id="feedCompFilter" onchange="renderFeed()">
@@ -843,7 +818,7 @@ function showView(name) {
   // Render
   if (name === 'dashboard') renderDashboard();
   if (name === 'competitors') renderCompetitors();
-  if (name === 'feed') renderFeed();
+  if (name === 'feed') { buildKwInputs(); renderFeed(); }
   if (name === 'report') generateReport();
   if (name === 'adminUsers') renderUsers();
   if (name === 'adminLogs') renderLogs();
@@ -1061,19 +1036,35 @@ function fillKw(word) {
     const el = document.getElementById('kw'+i);
     if (!el.value.trim()) { el.value = word; el.style.borderColor = 'var(--primary-light)'; renderFeed(); return; }
   }
-  showToast('5 組關鍵字已填滿，請先清除一個', 'error');
+  showToast('20 組關鍵字已填滿，請先清除一個', 'error');
+}
+
+function buildKwInputs() {
+  const grid = document.getElementById('kwInputGrid');
+  if (!grid) return;
+  grid.innerHTML = Array.from({length:20}, (_,i) => {
+    const n = i+1;
+    return `<div style="position:relative">
+      <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:700;color:var(--primary-light);pointer-events:none">KW${n}</span>
+      <input type="text" id="kw${n}" placeholder="關鍵字 ${n}" oninput="renderFeed()" autocomplete="off"
+        style="width:100%;padding:8px 8px 8px 34px;border:1.5px solid var(--border);border-radius:7px;font-size:12px">
+    </div>`;
+  }).join('');
 }
 
 function clearAllKw() {
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= 20; i++) {
     const el = document.getElementById('kw'+i);
-    el.value = ''; el.style.borderColor = '';
+    if (el) { el.value = ''; el.style.borderColor = ''; }
   }
   renderFeed();
 }
 
 function getActiveKeywords() {
-  return [1,2,3,4,5].map(i => document.getElementById('kw'+i).value.trim().toLowerCase()).filter(Boolean);
+  return Array.from({length:20}, (_,i) => {
+    const el = document.getElementById('kw'+(i+1));
+    return el ? el.value.trim().toLowerCase() : '';
+  }).filter(Boolean);
 }
 
 function renderFeed() {
