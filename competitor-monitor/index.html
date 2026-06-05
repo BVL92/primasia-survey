@@ -815,7 +815,8 @@ function doLogin() {
   }
   currentUser = user;
   // Update lastLogin
-  const updated = users.map(x => x.id === user.id ? { ...x, lastLogin: now() } : x);
+  const allUsers = DB.get('users', []);
+  const updated = allUsers.map(x => x.id === user.id ? { ...x, lastLogin: now() } : x);
   DB.set('users', updated);
   // Log session
   const log = { id:'l'+Date.now(), userId:user.id, username:user.username, displayName:user.displayName, loginAt:now(), logoutAt:null, device:navigator.userAgent.substring(0,80), ip:'192.168.'+rnd(1,254)+'.'+rnd(1,254) };
