@@ -773,20 +773,45 @@ let sessionLogId = null;
 function doLogin() {
   const u = document.getElementById('loginUser').value.trim();
   const p = document.getElementById('loginPass').value;
-  const users = DB.get('users', []);
-  const user = users.find(x => x.username === u && x.password === p && x.status === 'active');
-  if (!user) { document.getElementById('loginError').style.display = 'block'; return; }
+  const errEl = document.getElementById('loginError');
+
+  // ① 直接比對 SYSTEM_USERS（不依賴 localStorage）
+  const sysMatch = SYSTEM_USERS.find(x => x.username === u && x.password === p);
+  let user = null;
+
+  if (sysMatch) {
+    // 取得管理員在 UI 調整的欄位（validFrom/validTo/status/displayName 等）
+    const stored = DB.get('users', []).find(s => s.id === sysMatch.id);
+    // 帳號/密碼/角色永遠以 SYSTEM_USERS 為準，其餘允許覆寫
+    user = stored
+      ? { ...stored, username:sysMatch.username, password:sysMatch.password, role:sysMatch.role }
+      : { ...sysMatch, lastLogin:null };
+  } else {
+    // ② 找管理員自行新增的自訂帳號
+    const sysIds = new Set(SYSTEM_USERS.map(s => s.id));
+    user = DB.get('users', []).find(x =>
+      !sysIds.has(x.id) && x.username === u && x.password === p && x.status === 'active'
+    );
+  }
+
+  if (!user) {
+    errEl.textContent = '帳號或密碼錯誤，請重試';
+    errEl.style.display = 'block'; return;
+  }
+  if (user.status !== 'active') {
+    errEl.textContent = '此帳號已停用，請聯絡管理員';
+    errEl.style.display = 'block'; return;
+  }
+
   // 驗證使用期間
   const td = today();
   if (user.validFrom && td < user.validFrom) {
-    const el = document.getElementById('loginError');
-    el.textContent = `帳號尚未開通（開始日：${user.validFrom}）`;
-    el.style.display = 'block'; return;
+    errEl.textContent = `帳號尚未開通（開始日：${user.validFrom}）`;
+    errEl.style.display = 'block'; return;
   }
   if (user.validTo && td > user.validTo) {
-    const el = document.getElementById('loginError');
-    el.textContent = `帳號使用期限已到期（結束日：${user.validTo}）`;
-    el.style.display = 'block'; return;
+    errEl.textContent = `帳號使用期限已到期（結束日：${user.validTo}）`;
+    errEl.style.display = 'block'; return;
   }
   currentUser = user;
   // Update lastLogin
