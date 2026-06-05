@@ -712,28 +712,38 @@ const BROKER_LIST = [
   { name:'大展證券',     url:'https://www.tachinasec.com.tw',     fb:'', line:'', ig:'', yt:'' },
 ];
 
-// Init default data
+// ── 系統內建帳號（每次頁面載入都強制同步，帳號/密碼/角色永遠以此為準）──
+const SYSTEM_USERS = [
+  { id:'u_vincentlee',  username:'vincentlee',  password:'@Etj601217008', displayName:'Vincent Lee',  email:'vincentlee@primasia.com',  role:'admin', status:'active', createdAt:'2025-01-01', validFrom:'2020-01-01', validTo:'2027-06-04' },
+  { id:'u_jameslin',   username:'jameslin',    password:'@Etj23226260',  displayName:'James Lin',    email:'jameslin@primasia.com',    role:'admin', status:'active', createdAt:'2025-01-01', validFrom:'2020-01-01', validTo:'2027-06-04' },
+  { id:'u_markliu',    username:'markliu',     password:'@168168',       displayName:'Mark Liu',     email:'markliu@primasia.com',     role:'user',  status:'active', createdAt:'2025-01-01', validFrom:'2020-01-01', validTo:'2027-07-31' },
+  { id:'u_glorychen',  username:'glorychen',   password:'@168168',       displayName:'Glory Chen',   email:'glorychen@primasia.com',   role:'user',  status:'active', createdAt:'2025-01-01', validFrom:'2020-01-01', validTo:'2027-07-31' },
+  { id:'u_frankycho',  username:'frankycho',   password:'@168168',       displayName:'Franky Cho',   email:'frankycho@primasia.com',   role:'user',  status:'active', createdAt:'2025-01-01', validFrom:'2020-01-01', validTo:'2027-07-31' },
+  { id:'u_yclam',      username:'yclam',       password:'@168168',       displayName:'YC Lam',       email:'yclam@primasia.com',       role:'user',  status:'active', createdAt:'2025-01-01', validFrom:'2020-01-01', validTo:'2027-07-31' },
+  { id:'u_stephentung',username:'stephentung', password:'@168168',       displayName:'Stephen Tung', email:'stephentung@primasia.com', role:'user',  status:'active', createdAt:'2025-01-01', validFrom:'2020-01-01', validTo:'2027-07-31' },
+  { id:'u_peterlee',   username:'peterlee',    password:'@168168',       displayName:'Peter Lee',    email:'peterlee@primasia.com',    role:'user',  status:'active', createdAt:'2025-01-01', validFrom:'2020-01-01', validTo:'2027-07-31' },
+  { id:'u_tomkang',    username:'tomkang',     password:'@168168',       displayName:'Tom Kang',     email:'tomkang@primasia.com',     role:'user',  status:'active', createdAt:'2025-01-01', validFrom:'2020-01-01', validTo:'2027-07-31' },
+  { id:'u_chloechou',  username:'chloechou',   password:'@168168',       displayName:'Chloe Chou',   email:'chloechou@primasia.com',   role:'user',  status:'active', createdAt:'2025-01-01', validFrom:'2020-01-01', validTo:'2027-07-31' },
+  { id:'u_lyndalee',   username:'lyndalee',    password:'@168168',       displayName:'Lynda Lee',    email:'lyndalee@primasia.com',    role:'user',  status:'active', createdAt:'2025-01-01', validFrom:'2020-01-01', validTo:'2027-07-31' },
+];
+
 function initData() {
-  // 直接驗證關鍵帳號是否正確，不依賴版本號
-  const _u = DB.get('users', null);
-  const _ok = _u && _u.find(u => u.username === 'vincentlee' && u.password === '@Etj601217008');
-  if (!_ok) {
-    DB.set('users', [
-      { id:'u_vincentlee', username:'vincentlee', password:'@Etj601217008', displayName:'Vincent Lee', email:'vincentlee@primasia.com', role:'admin', status:'active', createdAt:'2025-01-01', lastLogin:null, validFrom:'2020-01-01', validTo:'2027-06-04' },
-      { id:'u_jameslin',   username:'jameslin',   password:'@Etj23226260',  displayName:'James Lin',    email:'jameslin@primasia.com',   role:'admin', status:'active', createdAt:'2025-01-01', lastLogin:null, validFrom:'2020-01-01', validTo:'2027-06-04' },
-      { id:'u_markliu',    username:'markliu',    password:'@168168', displayName:'Mark Liu',      email:'markliu@primasia.com',    role:'user',  status:'active', createdAt:'2025-01-01', lastLogin:null, validFrom:'2020-01-01', validTo:'2027-07-31' },
-      { id:'u_glorychen',  username:'glorychen',  password:'@168168', displayName:'Glory Chen',    email:'glorychen@primasia.com',  role:'user',  status:'active', createdAt:'2025-01-01', lastLogin:null, validFrom:'2020-01-01', validTo:'2027-07-31' },
-      { id:'u_frankycho',  username:'frankycho',  password:'@168168', displayName:'Franky Cho',    email:'frankycho@primasia.com',  role:'user',  status:'active', createdAt:'2025-01-01', lastLogin:null, validFrom:'2020-01-01', validTo:'2027-07-31' },
-      { id:'u_yclam',      username:'yclam',      password:'@168168', displayName:'YC Lam',        email:'yclam@primasia.com',      role:'user',  status:'active', createdAt:'2025-01-01', lastLogin:null, validFrom:'2020-01-01', validTo:'2027-07-31' },
-      { id:'u_stephentung',username:'stephentung',password:'@168168', displayName:'Stephen Tung',  email:'stephentung@primasia.com',role:'user',  status:'active', createdAt:'2025-01-01', lastLogin:null, validFrom:'2020-01-01', validTo:'2027-07-31' },
-      { id:'u_peterlee',   username:'peterlee',   password:'@168168', displayName:'Peter Lee',     email:'peterlee@primasia.com',   role:'user',  status:'active', createdAt:'2025-01-01', lastLogin:null, validFrom:'2020-01-01', validTo:'2027-07-31' },
-      { id:'u_tomkang',    username:'tomkang',    password:'@168168', displayName:'Tom Kang',      email:'tomkang@primasia.com',    role:'user',  status:'active', createdAt:'2025-01-01', lastLogin:null, validFrom:'2020-01-01', validTo:'2027-07-31' },
-      { id:'u_chloechou',  username:'chloechou',  password:'@168168', displayName:'Chloe Chou',    email:'chloechou@primasia.com',  role:'user',  status:'active', createdAt:'2025-01-01', lastLogin:null, validFrom:'2020-01-01', validTo:'2027-07-31' },
-      { id:'u_lyndalee',   username:'lyndalee',   password:'@168168', displayName:'Lynda Lee',     email:'lyndalee@primasia.com',   role:'user',  status:'active', createdAt:'2025-01-01', lastLogin:null, validFrom:'2020-01-01', validTo:'2027-07-31' },
-    ]);
-  }
+  // 每次載入都強制同步系統帳號（帳號/密碼/角色以程式碼為準）
+  // 保留管理員在 UI 修改的欄位（validFrom/validTo/status/lastLogin/displayName）
+  const stored = DB.get('users', []);
+  const sysIds = new Set(SYSTEM_USERS.map(u => u.id));
+  const customUsers = stored.filter(u => !sysIds.has(u.id)); // 管理員自行新增的帳號
+
+  const merged = SYSTEM_USERS.map(su => {
+    const ex = stored.find(s => s.id === su.id);
+    // 帳號/密碼/角色/email 永遠從程式碼取；其餘保留管理員調整的值
+    return ex
+      ? { ...ex, username:su.username, password:su.password, role:su.role, email:su.email }
+      : { ...su, lastLogin: null };
+  });
+
+  DB.set('users', [...merged, ...customUsers]);
   if (!DB.get('loginLogs', null)) DB.set('loginLogs', []);
-  // competitors / activities / channels 改為每人獨立，登入後才建立
 }
 
 // ═══════════════════════════════════════════════════════════
