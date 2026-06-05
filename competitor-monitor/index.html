@@ -1032,7 +1032,7 @@ function toggleKwPanel() {
 }
 
 function fillKw(word) {
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= 20; i++) {
     const el = document.getElementById('kw'+i);
     if (!el.value.trim()) { el.value = word; el.style.borderColor = 'var(--primary-light)'; renderFeed(); return; }
   }
