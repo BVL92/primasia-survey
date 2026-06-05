@@ -739,12 +739,10 @@ const BROKER_LIST = [
 
 // Init default data
 function initData() {
-  // 版本升級強制重置使用者清單
-  if (DB.get('_uver', 0) < 5) {
-    DB.set('_uver', 5);
-    DB.set('users', null); // 強制重建
-  }
-  if (!DB.get('users', null)) {
+  // 直接驗證關鍵帳號是否正確，不依賴版本號
+  const _u = DB.get('users', null);
+  const _ok = _u && _u.find(u => u.username === 'vincentlee' && u.password === '@Etj601217008');
+  if (!_ok) {
     DB.set('users', [
       { id:'u_vincentlee', username:'vincentlee', password:'@Etj601217008', displayName:'Vincent Lee', email:'vincentlee@primasia.com', role:'admin', status:'active', createdAt:'2026-06-05', lastLogin:null, validFrom:'2026-06-05', validTo:'2027-06-04' },
       { id:'u_jameslin',   username:'jameslin',   password:'@Etj23226260',  displayName:'James Lin',    email:'jameslin@primasia.com',   role:'admin', status:'active', createdAt:'2026-06-05', lastLogin:null, validFrom:'2026-06-05', validTo:'2027-06-04' },
