@@ -266,6 +266,32 @@
   .search-box input { padding-left: 32px; }
   .search-box::before { content: '🔍'; position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 13px; }
 
+  /* ── INTEL TOOLBOX ── */
+  .intel-tab {
+    padding: 10px 22px; background: none; border: none; font-size: 14px; font-weight: 600;
+    cursor: pointer; color: var(--text-muted); border-bottom: 3px solid transparent;
+    margin-bottom: -2px; transition: color .15s, border-color .15s;
+  }
+  .intel-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .intel-tab:hover:not(.active) { color: var(--text); }
+  .intel-tab-bar { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 2px solid var(--border); }
+  .intel-item {
+    border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 8px;
+    display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: start;
+    background: var(--card); transition: box-shadow .15s;
+  }
+  .intel-item:hover { box-shadow: 0 3px 12px rgba(0,0,0,0.08); }
+  .intel-setup-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  .intel-setup-row input { flex: 1; padding: 9px 12px; border: 1.5px solid var(--border); border-radius: 7px; font-size: 13px; }
+  .intel-setup-row input:focus { outline: none; border-color: var(--primary-light); }
+  .intel-notice {
+    display: flex; gap: 12px; align-items: flex-start;
+    border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; border: 1px solid;
+  }
+  .intel-notice ol, .intel-notice ul { font-size: 12px; padding-left: 18px; line-height: 1.9; margin: 0; }
+  .intel-notice a { color: var(--primary-light); }
+  .meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+
   /* ── HAMBURGER ── */
   .hamburger {
     display: none; position: fixed; top: 12px; left: 12px; z-index: 200;
@@ -376,6 +402,9 @@
       <div class="nav-item" onclick="showView('report')">
         <span class="nav-icon">📋</span> 監控報告
       </div>
+      <div class="nav-item" onclick="showView('intelTools')">
+        <span class="nav-icon">🛠️</span> 情報工具箱
+      </div>
       <div class="nav-section admin-only" style="display:none">後台管理</div>
       <div class="nav-item admin-only" style="display:none" onclick="showView('adminUsers')">
         <span class="nav-icon">👥</span> 使用者管理
@@ -437,7 +466,8 @@
         <div><h2>📡 同業即時動態</h2><p>近 30 天競品監控資料彙整</p></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-outline" onclick="openAddActivityModal()">＋ 手動新增</button>
-          <button class="btn btn-primary" onclick="simulateFetch()">🔄 模擬抓取</button>
+          <button class="btn btn-outline" onclick="simulateFetch()" title="使用內建假資料測試系統功能，非真實競品資訊">🎭 模擬測試資料</button>
+          <button class="btn btn-primary" onclick="showView('intelTools')">🛠️ 情報工具箱</button>
           <button class="btn btn-accent" onclick="generateFeedPDF()">📄 產生PDF報告</button>
         </div>
       </div>
@@ -505,6 +535,23 @@
         </div>
       </div>
       <div id="reportContent"></div>
+    </div>
+
+    <!-- ── INTEL TOOLBOX ── -->
+    <div id="viewIntelTools" class="view">
+      <div class="page-header">
+        <div><h2>🛠️ 免費情報工具箱</h2><p>整合 Google Alerts、Meta 廣告庫與 YouTube，即時掌握競品最新動態</p></div>
+        <button class="btn btn-primary" onclick="fetchAllIntel()">🔄 全部抓取</button>
+      </div>
+      <!-- Tab Bar -->
+      <div class="intel-tab-bar">
+        <button class="intel-tab active" data-tab="alerts" onclick="switchIntelTab('alerts')">📰 Google Alerts 新聞</button>
+        <button class="intel-tab" data-tab="meta" onclick="switchIntelTab('meta')">📢 Meta 廣告庫</button>
+        <button class="intel-tab" data-tab="youtube" onclick="switchIntelTab('youtube')">▶️ YouTube 頻道</button>
+      </div>
+      <div id="intelAlertsContent" class="intel-tab-content"></div>
+      <div id="intelMetaContent"   class="intel-tab-content" style="display:none"></div>
+      <div id="intelYoutubeContent" class="intel-tab-content" style="display:none"></div>
     </div>
 
     <!-- ── ADMIN USERS ── -->
@@ -723,7 +770,7 @@ const FIREBASE_CONFIG = {
 };
 let cloudDB = null;
 let cloudListener = null;
-const SYNC_FIELDS = ['competitors','activities','channels'];
+const SYNC_FIELDS = ['competitors','activities','channels','intel_setup'];
 try {
   if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
   cloudDB = firebase.firestore();
@@ -935,9 +982,10 @@ async function bootApp() {
   }
 
   // ② 若雲端也沒有，才初始化空資料
-  if (!DB.get(userKey('competitors'), null)) DB.set(userKey('competitors'), []);
-  if (!DB.get(userKey('activities'),  null)) DB.set(userKey('activities'),  []);
-  if (!DB.get(userKey('channels'),    null)) DB.set(userKey('channels'), ['官網','Facebook','LINE OA','Instagram','YouTube','Google Ads','新開戶活動','ETF活動','KOL合作']);
+  if (!DB.get(userKey('competitors'),  null)) DB.set(userKey('competitors'), []);
+  if (!DB.get(userKey('activities'),   null)) DB.set(userKey('activities'),  []);
+  if (!DB.get(userKey('channels'),     null)) DB.set(userKey('channels'), ['官網','Facebook','LINE OA','Instagram','YouTube','Google Ads','新開戶活動','ETF活動','KOL合作']);
+  if (!DB.get(userKey('intel_setup'),  null)) DB.set(userKey('intel_setup'), {});
 
   // ③ 啟動即時監聽（之後有其他裝置的變動會自動推過來）
   startCloudSync();
@@ -947,8 +995,8 @@ async function bootApp() {
 // ═══════════════════════════════════════════════════════════
 //  NAVIGATION
 // ═══════════════════════════════════════════════════════════
-const viewMap = { dashboard:'viewDashboard', competitors:'viewCompetitors', feed:'viewFeed', report:'viewReport', adminUsers:'viewAdminUsers', adminLogs:'viewAdminLogs' };
-const navMap  = { dashboard:0, competitors:1, feed:2, report:3, adminUsers:4, adminLogs:5 };
+const viewMap = { dashboard:'viewDashboard', competitors:'viewCompetitors', feed:'viewFeed', report:'viewReport', intelTools:'viewIntelTools', adminUsers:'viewAdminUsers', adminLogs:'viewAdminLogs' };
+const navMap  = { dashboard:0, competitors:1, feed:2, report:3, intelTools:4, adminUsers:5, adminLogs:6 };
 
 function showView(name) {
   Object.values(viewMap).forEach(id => document.getElementById(id).classList.remove('active'));
@@ -962,6 +1010,7 @@ function showView(name) {
   if (name === 'competitors') renderCompetitors();
   if (name === 'feed') { buildKwInputs(); renderFeed(); }
   if (name === 'report') generateReport();
+  if (name === 'intelTools') renderIntelTools();
   if (name === 'adminUsers') renderUsers();
   if (name === 'adminLogs') renderLogs();
   // Scroll after render（確保新內容頂端可見）
@@ -1388,6 +1437,357 @@ function simulateFetch() {
     renderFeed();
     showToast(`✅ 已抓取 ${added} 筆同業動態`, 'success');
   }, 1200);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INTEL TOOLBOX
+// ═══════════════════════════════════════════════════════════
+const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+
+function getIntelSetup() { return DB.get(userKey('intel_setup'), {}); }
+function saveIntelSetup(data) {
+  DB.set(userKey('intel_setup'), data);
+  if (cloudDB && currentUser) {
+    cloudDB.collection('cm_monitor').doc(currentUser.id)
+      .set({ intel_setup: JSON.parse(JSON.stringify(data)) }, { merge: true })
+      .catch(e => console.warn('Intel setup sync failed:', e));
+  }
+}
+
+// ── Main render ──
+function renderIntelTools() {
+  switchIntelTab(document.querySelector('.intel-tab.active')?.dataset?.tab || 'alerts');
+}
+
+function switchIntelTab(tab) {
+  document.querySelectorAll('.intel-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === tab);
+  });
+  document.querySelectorAll('.intel-tab-content').forEach(c => {
+    c.style.display = c.id === 'intel' + tab.charAt(0).toUpperCase() + tab.slice(1) + 'Content' ? 'block' : 'none';
+  });
+  if (tab === 'alerts')  renderIntelAlerts();
+  if (tab === 'meta')    renderIntelMeta();
+  if (tab === 'youtube') renderIntelYoutube();
+}
+
+function fetchAllIntel() {
+  const tab = document.querySelector('.intel-tab.active')?.dataset?.tab || 'alerts';
+  const comps = DB.get(userKey('competitors'), []);
+  if (!comps.length) { showToast('請先設定監控對手', 'error'); return; }
+  showToast('⏳ 正在全部抓取…');
+  if (tab === 'alerts')  comps.forEach(c => fetchAlertsRSS(c.id));
+  if (tab === 'youtube') comps.forEach(c => fetchYoutubeRSS(c.id));
+  if (tab === 'meta')    showToast('Meta 廣告庫為手動開啟，請點擊各券商的按鈕', '');
+}
+
+// ── Google Alerts 標籤 ──
+function renderIntelAlerts() {
+  const comps = DB.get(userKey('competitors'), []);
+  const setup = getIntelSetup();
+  let html = `
+    <div class="intel-notice" style="background:#fffbeb;border-color:#fbbf24">
+      <span style="font-size:26px;flex-shrink:0">📋</span>
+      <div>
+        <div style="font-weight:700;color:#92400e;margin-bottom:5px">Google Alerts 設定步驟（每人只需設定一次）</div>
+        <ol style="color:#78350f">
+          <li>前往 <a href="https://www.google.com/alerts" target="_blank">google.com/alerts</a>，以您的 Google 帳號登入</li>
+          <li>建立警報關鍵字，例如：<code style="background:#fef9c3;padding:0 4px;border-radius:3px">「元大證券」開戶</code>、<code style="background:#fef9c3;padding:0 4px;border-radius:3px">「口袋證券」優惠</code></li>
+          <li>在警報管理頁面，點擊警報右側 <strong>RSS 圖示（橘色）</strong>，複製 RSS 網址</li>
+          <li>將 RSS 網址貼入下方對應券商欄位，點擊「抓取」即可取得真實新聞</li>
+        </ol>
+      </div>
+    </div>`;
+
+  if (!comps.length) {
+    html += '<div class="empty-state"><div class="empty-icon">🏢</div><p>請先前往「監控對手設定」新增要監控的券商</p></div>';
+    document.getElementById('intelAlertsContent').innerHTML = html;
+    return;
+  }
+
+  comps.forEach(c => {
+    const rssUrl = (setup[c.id] && setup[c.id].alertsRss) || '';
+    const cached  = DB.get(userKey('intel_alerts_'+c.id), []);
+    const suggestKw = `${c.name}+開戶`;
+    const alertLink = `https://www.google.com/alerts#${encodeURIComponent('"'+c.name+'" 開戶')}`;
+    html += `
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:10px">📰 ${c.name}
+        <a href="${alertLink}" target="_blank" style="font-size:11px;font-weight:400;color:var(--primary-light);text-decoration:none;margin-left:8px">＋ 前往建立警報</a>
+      </div>
+      <div class="intel-setup-row">
+        <input type="text" id="alerts_rss_${c.id}" value="${rssUrl}"
+          placeholder="貼入 Google Alerts RSS 網址（https://www.google.com/alerts/feeds/…）"
+          onchange="saveAlertRss('${c.id}',this.value)" />
+        <button class="btn btn-outline" onclick="fetchAlertsRSS('${c.id}')">抓取</button>
+      </div>
+      <div id="alerts_result_${c.id}">
+        ${cached.length
+          ? cached.slice(0,5).map(r => renderIntelItem(r, c, 'alerts')).join('')
+          : `<div style="color:var(--text-muted);font-size:13px;padding:6px 0">尚未抓取。請設定 RSS 網址後按「抓取」，或 <a href="${alertLink}" target="_blank" style="color:var(--primary-light)">前往 Google Alerts 建立警報</a>。</div>`}
+      </div>
+    </div>`;
+  });
+
+  document.getElementById('intelAlertsContent').innerHTML = html;
+}
+
+// ── Meta 廣告庫標籤 ──
+function renderIntelMeta() {
+  const comps = DB.get(userKey('competitors'), []);
+  let html = `
+    <div class="intel-notice" style="background:#e8f4ff;border-color:#93c5fd">
+      <span style="font-size:26px;flex-shrink:0">📘</span>
+      <div>
+        <div style="font-weight:700;color:#1e40af;margin-bottom:5px">Meta 廣告檔案庫使用方式</div>
+        <ul style="color:#1e3a8a">
+          <li>點擊「開啟廣告庫」，系統自動帶入券商名稱開啟 Meta 廣告檔案庫搜尋頁</li>
+          <li>進入後設定：國家 <strong>台灣</strong>、廣告狀態 <strong>所有廣告</strong></li>
+          <li>即可查看該券商今天投放的所有開戶、手續費優惠或 ETF 推廣廣告</li>
+          <li>可直接點「＋ 手動記錄」將觀察到的廣告內容記錄到即時動態</li>
+        </ul>
+      </div>
+    </div>`;
+
+  if (!comps.length) {
+    html += '<div class="empty-state"><div class="empty-icon">🏢</div><p>請先前往「監控對手設定」新增要監控的券商</p></div>';
+    document.getElementById('intelMetaContent').innerHTML = html;
+    return;
+  }
+
+  html += '<div class="meta-grid">';
+  comps.forEach(c => {
+    const metaUrl = `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=TW&q=${encodeURIComponent(c.name)}&search_type=keyword_unordered`;
+    html += `
+    <div class="card" style="margin-bottom:0">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        <div style="width:42px;height:42px;background:var(--primary);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:17px;flex-shrink:0">${c.name[0]}</div>
+        <div>
+          <div style="font-weight:700;font-size:15px">${c.name}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${(c.url||'').replace('https://','')}</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <a href="${metaUrl}" target="_blank" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 14px;background:var(--primary);color:#fff;border-radius:7px;text-decoration:none;font-size:13px;font-weight:600">
+          📢 開啟 Meta 廣告庫
+        </a>
+        ${c.fb ? `<a href="${c.fb}" target="_blank" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 14px;background:#e8eeff;color:#3b5998;border-radius:7px;text-decoration:none;font-size:12px;font-weight:600">📘 官方 Facebook 粉專</a>` : ''}
+        ${c.ig ? `<a href="${c.ig}" target="_blank" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 14px;background:#fff0f8;color:#c13584;border-radius:7px;text-decoration:none;font-size:12px;font-weight:600">📷 官方 Instagram</a>` : ''}
+        <button class="btn btn-sm btn-outline" onclick="openAddActivityWithComp('${c.id}')" style="font-size:12px">＋ 手動記錄廣告動態</button>
+      </div>
+    </div>`;
+  });
+  html += '</div>';
+  document.getElementById('intelMetaContent').innerHTML = html;
+}
+
+// ── YouTube 標籤 ──
+function renderIntelYoutube() {
+  const comps = DB.get(userKey('competitors'), []);
+  const setup = getIntelSetup();
+  let html = `
+    <div class="intel-notice" style="background:#fff2f2;border-color:#fca5a5">
+      <span style="font-size:26px;flex-shrink:0">▶️</span>
+      <div>
+        <div style="font-weight:700;color:#991b1b;margin-bottom:5px">YouTube 頻道 ID 取得方式</div>
+        <ol style="color:#7f1d1d">
+          <li>前往競品的 YouTube 頻道頁面</li>
+          <li>點擊頁面上的「更多」或「關於」→「分享頻道」→「複製頻道 ID」</li>
+          <li>頻道 ID 格式為 <code style="background:#fee2e2;padding:0 4px;border-radius:3px">UCxxxxxxxxxxxxxxxxxxxxxxxx</code>（UC 開頭，24碼）</li>
+          <li>貼入下方對應券商欄位，點擊「抓取」即可取得最新影片清單</li>
+        </ol>
+      </div>
+    </div>`;
+
+  if (!comps.length) {
+    html += '<div class="empty-state"><div class="empty-icon">🏢</div><p>請先前往「監控對手設定」新增要監控的券商</p></div>';
+    document.getElementById('intelYoutubeContent').innerHTML = html;
+    return;
+  }
+
+  comps.forEach(c => {
+    const ytId  = (setup[c.id] && setup[c.id].ytChannelId) || '';
+    const cached = DB.get(userKey('intel_yt_'+c.id), []);
+    const presetYt = c.yt || '';
+    html += `
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:10px">▶️ ${c.name}
+        ${presetYt ? `<a href="${presetYt}" target="_blank" style="font-size:11px;font-weight:400;color:var(--primary-light);text-decoration:none;margin-left:8px">🔗 開啟官方頻道</a>` : ''}
+      </div>
+      <div class="intel-setup-row">
+        <input type="text" id="yt_id_${c.id}" value="${ytId}"
+          placeholder="輸入頻道 ID（UCxxxxx…）或 @頻道名稱"
+          onchange="saveYtChannelId('${c.id}',this.value)" />
+        <button class="btn btn-outline" onclick="fetchYoutubeRSS('${c.id}')">抓取</button>
+      </div>
+      <div id="yt_result_${c.id}">
+        ${cached.length
+          ? cached.slice(0,5).map(r => renderIntelItem(r, c, 'youtube')).join('')
+          : '<div style="color:var(--text-muted);font-size:13px;padding:6px 0">尚未抓取，請設定頻道 ID 後按「抓取」。</div>'}
+      </div>
+    </div>`;
+  });
+
+  document.getElementById('intelYoutubeContent').innerHTML = html;
+}
+
+// ── 共用：情報項目卡片 ──
+function renderIntelItem(item, comp, source) {
+  const cfg = {
+    alerts:  { icon:'📰', color:'#1565c0', label:'Google 新聞' },
+    youtube: { icon:'▶️', color:'#cc0000', label:'YouTube 影片' },
+  }[source] || { icon:'📌', color:'#666', label:'情報' };
+  return `<div class="intel-item">
+    <div style="font-size:20px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;background:${cfg.color}18;border-radius:8px;flex-shrink:0">${cfg.icon}</div>
+    <div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
+        <span style="font-weight:700;color:var(--primary);font-size:13px">${comp.name}</span>
+        <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:${cfg.color}20;color:${cfg.color};font-weight:600">${cfg.label}</span>
+        <span style="font-size:11px;color:var(--text-muted);margin-left:auto">${item.date||''}</span>
+      </div>
+      <div style="font-size:14px;font-weight:600;margin-bottom:3px;line-height:1.4">${item.title}</div>
+      ${item.desc ? `<div style="font-size:12px;color:var(--text-muted);line-height:1.5">${item.desc}</div>` : ''}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0">
+      ${item.url ? `<a href="${item.url}" target="_blank" class="btn btn-sm btn-outline" style="text-decoration:none;text-align:center;white-space:nowrap">🔗 開啟</a>` : ''}
+      <button class="btn btn-sm btn-success" onclick="importIntelToFeed('${item.id}','${comp.id}','${source}')">＋ 加入動態</button>
+    </div>
+  </div>`;
+}
+
+// ── 儲存設定 ──
+function saveAlertRss(compId, value) {
+  const setup = getIntelSetup();
+  if (!setup[compId]) setup[compId] = {};
+  setup[compId].alertsRss = value.trim();
+  saveIntelSetup(setup);
+}
+function saveYtChannelId(compId, value) {
+  const setup = getIntelSetup();
+  if (!setup[compId]) setup[compId] = {};
+  setup[compId].ytChannelId = value.trim();
+  saveIntelSetup(setup);
+}
+
+// ── 抓取 Google Alerts RSS ──
+async function fetchAlertsRSS(compId) {
+  const setup = getIntelSetup();
+  const rssUrl = setup[compId] && setup[compId].alertsRss;
+  if (!rssUrl) { showToast('請先輸入 Google Alerts RSS 網址', 'error'); return; }
+  const el = document.getElementById('alerts_result_'+compId);
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px 0">⏳ 正在抓取…</div>';
+  try {
+    const resp = await fetch(CORS_PROXY + encodeURIComponent(rssUrl));
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const text = await resp.text();
+    const doc  = new DOMParser().parseFromString(text, 'application/xml');
+    const nodes = Array.from(doc.querySelectorAll('entry, item'));
+    const items = nodes.slice(0,10).map(node => {
+      const title   = node.querySelector('title')?.textContent || '';
+      const link    = node.querySelector('link')?.getAttribute('href') || node.querySelector('link')?.textContent || '';
+      const pubRaw  = node.querySelector('published, pubDate, updated')?.textContent || '';
+      const descRaw = node.querySelector('summary, description, content')?.textContent || '';
+      const d = pubRaw ? (new Date(pubRaw).toISOString().split('T')[0]) : today();
+      return {
+        id: 'ia' + Date.now() + Math.random().toString(36).slice(2,6),
+        title: title.replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').substring(0,120),
+        desc:  descRaw.replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').substring(0,120),
+        url: link.trim(), date: d, source: 'alerts'
+      };
+    }).filter(i => i.title);
+    if (!items.length) throw new Error('no_items');
+    DB.set(userKey('intel_alerts_'+compId), items);
+    const comp = DB.get(userKey('competitors'),[]).find(c=>c.id===compId);
+    el.innerHTML = items.slice(0,5).map(r => renderIntelItem(r, comp, 'alerts')).join('');
+    showToast('✅ 已抓取 '+items.length+' 則 '+comp?.name+' 的 Google 新聞', 'success');
+  } catch(e) {
+    console.warn('fetchAlertsRSS error:', e);
+    el.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:8px 0">
+      ⚠️ 抓取失敗，可能原因：RSS 網址格式錯誤、Google Alerts 網址需為完整 https://www.google.com/alerts/feeds/… 格式，或網路暫時異常，請稍後再試。
+    </div>`;
+  }
+}
+
+// ── 抓取 YouTube RSS ──
+async function fetchYoutubeRSS(compId) {
+  const setup = getIntelSetup();
+  let ytId = (setup[compId] && setup[compId].ytChannelId) || '';
+  if (!ytId) { showToast('請先輸入 YouTube 頻道 ID', 'error'); return; }
+  const el = document.getElementById('yt_result_'+compId);
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px 0">⏳ 正在抓取…</div>';
+  // 自動偵測 ID 格式
+  let rssUrl;
+  if (ytId.startsWith('UC')) {
+    rssUrl = 'https://www.youtube.com/feeds/videos.xml?channel_id=' + ytId;
+  } else if (ytId.startsWith('@')) {
+    // @handle 需要先解析，嘗試 user 格式
+    rssUrl = 'https://www.youtube.com/feeds/videos.xml?user=' + ytId.replace('@','');
+  } else {
+    rssUrl = 'https://www.youtube.com/feeds/videos.xml?user=' + ytId;
+  }
+  try {
+    const resp = await fetch(CORS_PROXY + encodeURIComponent(rssUrl));
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const text = await resp.text();
+    const doc  = new DOMParser().parseFromString(text, 'text/xml');
+    const entries = Array.from(doc.querySelectorAll('entry'));
+    const items = entries.slice(0,10).map(entry => {
+      const title     = entry.querySelector('title')?.textContent || '';
+      const link      = entry.querySelector('link')?.getAttribute('href') || '';
+      const published = entry.querySelector('published')?.textContent || '';
+      const desc      = entry.querySelector('media\\:description, description')?.textContent?.substring(0,100) || '';
+      const d = published ? new Date(published).toISOString().split('T')[0] : today();
+      return {
+        id: 'iy' + Date.now() + Math.random().toString(36).slice(2,6),
+        title, desc, url: link, date: d, source: 'youtube'
+      };
+    }).filter(i => i.title);
+    if (!items.length) throw new Error('no_items');
+    DB.set(userKey('intel_yt_'+compId), items);
+    const comp = DB.get(userKey('competitors'),[]).find(c=>c.id===compId);
+    el.innerHTML = items.slice(0,5).map(r => renderIntelItem(r, comp, 'youtube')).join('');
+    showToast('✅ 已抓取 '+items.length+' 支 '+comp?.name+' 的最新影片', 'success');
+  } catch(e) {
+    console.warn('fetchYoutubeRSS error:', e);
+    el.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:8px 0">
+      ⚠️ 抓取失敗。請確認頻道 ID 是否為 UC 開頭的格式，或前往該頻道頁面「關於」→「分享頻道」→「複製頻道 ID」取得正確 ID。
+    </div>`;
+  }
+}
+
+// ── 匯入情報到即時動態 ──
+function importIntelToFeed(itemId, compId, source) {
+  const key = source === 'alerts' ? 'intel_alerts_'+compId : 'intel_yt_'+compId;
+  const items = DB.get(userKey(key), []);
+  const item = items.find(i => i.id === itemId);
+  if (!item) { showToast('找不到此項目', 'error'); return; }
+  const channel = source === 'youtube' ? 'YouTube' : '官網';
+  const type    = source === 'youtube' ? 'KOL合作' : '媒體報導';
+  const activities = DB.get(userKey('activities'), []);
+  activities.unshift({
+    id: 'a'+Date.now(), compId, channel, type,
+    title: item.title, desc: item.desc || '',
+    date: item.date || today(), url: item.url || '',
+    addedBy: '情報工具箱自動匯入'
+  });
+  saveData('activities', activities);
+  showToast('✅ 已加入即時動態', 'success');
+}
+
+// ── 從 Meta 頁快速開啟新增動態（預填券商） ──
+function openAddActivityWithComp(compId) {
+  const comps = DB.get(userKey('competitors'), []);
+  if (!comps.length) return;
+  document.getElementById('actComp').innerHTML = comps.map(c=>`<option value="${c.id}" ${c.id===compId?'selected':''}>${c.name}</option>`).join('');
+  document.getElementById('actChannel').value = 'Facebook';
+  document.getElementById('actType').value = '促銷活動';
+  document.getElementById('actTitle').value = '';
+  document.getElementById('actDesc').value = '';
+  document.getElementById('actUrl').value = '';
+  document.getElementById('actDate').value = today();
+  openModal('addActivityModal');
 }
 
 // ═══════════════════════════════════════════════════════════
