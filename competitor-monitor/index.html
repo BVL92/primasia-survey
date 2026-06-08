@@ -1721,7 +1721,22 @@ async function fetchAlertsRSS(compId) {
     }
     const doc   = new DOMParser().parseFromString(text, 'application/xml');
     const nodes = Array.from(doc.querySelectorAll('entry, item'));
-    if (!nodes.length) throw new Error('no_xml_nodes');
+    if (!nodes.length) {
+      // Feed 存在但無 entry → 警報尚無符合新聞
+      const feedTitle = doc.querySelector('title')?.textContent || '';
+      el.innerHTML = `<div style="color:#92400e;font-size:13px;padding:10px;background:#fffbeb;border-radius:7px;border:1px solid #fbbf24">
+        <strong>⚠️ 此警報目前無新聞資料</strong><br>
+        <span style="color:#555">RSS 網址正確，但 Google 尚未找到符合關鍵字的新聞。</span><br><br>
+        <strong>警報關鍵字：</strong><span style="color:var(--primary)">${feedTitle.replace('Google 快訊 - ','')}</span><br><br>
+        <strong>建議處理方式：</strong>
+        <ul style="margin:6px 0 0 16px;font-size:12px;color:#555;line-height:1.8">
+          <li>前往 <a href="https://www.google.com/alerts" target="_blank" style="color:var(--primary-light)">Google Alerts</a> 刪除此警報</li>
+          <li>改用較寬鬆的關鍵字，例如：<code style="background:#fef3c7;padding:1px 5px;border-radius:3px">"國泰證券" 開戶</code></li>
+          <li>避免使用 <code style="background:#fee2e2;padding:1px 5px;border-radius:3px">site:</code> 等進階搜尋語法</li>
+        </ul>
+      </div>`;
+      return;
+    }
     const items = nodes.slice(0,10).map(node => {
       const rawTitle = node.querySelector('title')?.textContent || '';
       const title    = rawTitle.replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').trim().substring(0,120);
