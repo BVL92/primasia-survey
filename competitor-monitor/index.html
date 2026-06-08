@@ -1441,7 +1441,43 @@ function simulateFetch() {
 // ═══════════════════════════════════════════════════════════
 //  INTEL TOOLBOX
 // ═══════════════════════════════════════════════════════════
-const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+// ── 多重 CORS Proxy 輪詢（依序嘗試，第一個成功即用） ──
+async function fetchViaProxy(url) {
+  const proxies = [
+    async (u) => {
+      // corsproxy.io — 最穩定
+      const r = await fetch('https://corsproxy.io/?' + encodeURIComponent(u));
+      if (!r.ok) throw new Error('corsproxy.io HTTP ' + r.status);
+      return await r.text();
+    },
+    async (u) => {
+      // allorigins get（回傳 JSON，取 contents 欄位）
+      const r = await fetch('https://api.allorigins.win/get?url=' + encodeURIComponent(u));
+      if (!r.ok) throw new Error('allorigins HTTP ' + r.status);
+      const j = await r.json();
+      if (!j.contents) throw new Error('allorigins empty');
+      return j.contents;
+    },
+    async (u) => {
+      // allorigins raw
+      const r = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(u));
+      if (!r.ok) throw new Error('allorigins-raw HTTP ' + r.status);
+      return await r.text();
+    },
+  ];
+  const errs = [];
+  for (const fn of proxies) {
+    try {
+      const text = await Promise.race([
+        fn(url),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))
+      ]);
+      if (text && text.length > 30) return text;
+      errs.push('empty response');
+    } catch(e) { errs.push(e.message); }
+  }
+  throw new Error('all_proxies_failed: ' + errs.join(' | '));
+}
 
 function getIntelSetup() { return DB.get(userKey('intel_setup'), {}); }
 function saveIntelSetup(data) {
@@ -1670,40 +1706,51 @@ function saveYtChannelId(compId, value) {
 
 // ── 抓取 Google Alerts RSS ──
 async function fetchAlertsRSS(compId) {
-  const setup = getIntelSetup();
+  const setup  = getIntelSetup();
   const rssUrl = setup[compId] && setup[compId].alertsRss;
   if (!rssUrl) { showToast('請先輸入 Google Alerts RSS 網址', 'error'); return; }
+  if (!rssUrl.startsWith('http')) { showToast('RSS 網址格式錯誤，應以 https:// 開頭', 'error'); return; }
   const el = document.getElementById('alerts_result_'+compId);
   if (!el) return;
-  el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px 0">⏳ 正在抓取…</div>';
+  el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px 0">⏳ 正在連線抓取（最多等待 30 秒）…</div>';
   try {
-    const resp = await fetch(CORS_PROXY + encodeURIComponent(rssUrl));
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const text = await resp.text();
-    const doc  = new DOMParser().parseFromString(text, 'application/xml');
+    const text = await fetchViaProxy(rssUrl);
+    // 偵測是否為 XML / Atom / RSS
+    if (!text.includes('<') || (!text.includes('<feed') && !text.includes('<rss') && !text.includes('<entry') && !text.includes('<item'))) {
+      throw new Error('response_not_xml: ' + text.substring(0,120));
+    }
+    const doc   = new DOMParser().parseFromString(text, 'application/xml');
     const nodes = Array.from(doc.querySelectorAll('entry, item'));
+    if (!nodes.length) throw new Error('no_xml_nodes');
     const items = nodes.slice(0,10).map(node => {
-      const title   = node.querySelector('title')?.textContent || '';
-      const link    = node.querySelector('link')?.getAttribute('href') || node.querySelector('link')?.textContent || '';
-      const pubRaw  = node.querySelector('published, pubDate, updated')?.textContent || '';
-      const descRaw = node.querySelector('summary, description, content')?.textContent || '';
-      const d = pubRaw ? (new Date(pubRaw).toISOString().split('T')[0]) : today();
-      return {
-        id: 'ia' + Date.now() + Math.random().toString(36).slice(2,6),
-        title: title.replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').substring(0,120),
-        desc:  descRaw.replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').substring(0,120),
-        url: link.trim(), date: d, source: 'alerts'
-      };
+      const rawTitle = node.querySelector('title')?.textContent || '';
+      const title    = rawTitle.replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').trim().substring(0,120);
+      const link     = (node.querySelector('link')?.getAttribute('href') || node.querySelector('link')?.textContent || '').trim();
+      const pubRaw   = node.querySelector('published,pubDate,updated')?.textContent || '';
+      const descRaw  = (node.querySelector('summary,description,content')?.textContent || '').replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').trim().substring(0,150);
+      const d = pubRaw ? new Date(pubRaw).toISOString().split('T')[0] : today();
+      return { id:'ia'+Date.now()+Math.random().toString(36).slice(2,6), title, desc:descRaw, url:link, date:d, source:'alerts' };
     }).filter(i => i.title);
-    if (!items.length) throw new Error('no_items');
+    if (!items.length) throw new Error('parsed_but_no_title');
     DB.set(userKey('intel_alerts_'+compId), items);
     const comp = DB.get(userKey('competitors'),[]).find(c=>c.id===compId);
     el.innerHTML = items.slice(0,5).map(r => renderIntelItem(r, comp, 'alerts')).join('');
     showToast('✅ 已抓取 '+items.length+' 則 '+comp?.name+' 的 Google 新聞', 'success');
   } catch(e) {
-    console.warn('fetchAlertsRSS error:', e);
-    el.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:8px 0">
-      ⚠️ 抓取失敗，可能原因：RSS 網址格式錯誤、Google Alerts 網址需為完整 https://www.google.com/alerts/feeds/… 格式，或網路暫時異常，請稍後再試。
+    console.error('fetchAlertsRSS error:', e);
+    const hint = e.message.includes('all_proxies_failed') ? '網路代理服務暫時無法連線，請稍後再試（或確認網路連線正常）'
+                : e.message.includes('not_xml')           ? 'RSS 網址回傳非 XML 格式，請確認網址是否完整正確'
+                : e.message.includes('no_xml_nodes')      ? 'RSS 內容為空，此警報可能尚無資料，請稍後再試'
+                : 'RSS 網址可能有誤，請至 Google Alerts 重新複製 RSS 連結';
+    el.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:10px;background:#fff5f5;border-radius:7px;border:1px solid #fca5a5">
+      <strong>⚠️ 抓取失敗</strong><br><span style="color:#555">${hint}</span>
+      <div style="margin-top:8px;padding:8px;background:#fff;border-radius:5px;font-size:11px;color:var(--text-muted)">
+        <strong>您設定的 RSS 網址：</strong><br>
+        <span style="word-break:break-all">${rssUrl}</span>
+      </div>
+      <div style="margin-top:8px">
+        <a href="${rssUrl}" target="_blank" style="font-size:12px;color:var(--primary-light)">🔗 直接開啟 RSS 網址確認是否可存取</a>
+      </div>
     </div>`;
   }
 }
@@ -1711,47 +1758,40 @@ async function fetchAlertsRSS(compId) {
 // ── 抓取 YouTube RSS ──
 async function fetchYoutubeRSS(compId) {
   const setup = getIntelSetup();
-  let ytId = (setup[compId] && setup[compId].ytChannelId) || '';
+  let ytId = ((setup[compId] && setup[compId].ytChannelId) || '').trim();
   if (!ytId) { showToast('請先輸入 YouTube 頻道 ID', 'error'); return; }
   const el = document.getElementById('yt_result_'+compId);
   if (!el) return;
-  el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px 0">⏳ 正在抓取…</div>';
-  // 自動偵測 ID 格式
-  let rssUrl;
-  if (ytId.startsWith('UC')) {
-    rssUrl = 'https://www.youtube.com/feeds/videos.xml?channel_id=' + ytId;
-  } else if (ytId.startsWith('@')) {
-    // @handle 需要先解析，嘗試 user 格式
-    rssUrl = 'https://www.youtube.com/feeds/videos.xml?user=' + ytId.replace('@','');
-  } else {
-    rssUrl = 'https://www.youtube.com/feeds/videos.xml?user=' + ytId;
-  }
+  el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px 0">⏳ 正在連線抓取…</div>';
+  const rssUrl = ytId.startsWith('UC')
+    ? 'https://www.youtube.com/feeds/videos.xml?channel_id=' + ytId
+    : 'https://www.youtube.com/feeds/videos.xml?user=' + ytId.replace(/^@/,'');
   try {
-    const resp = await fetch(CORS_PROXY + encodeURIComponent(rssUrl));
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const text = await resp.text();
-    const doc  = new DOMParser().parseFromString(text, 'text/xml');
+    const text = await fetchViaProxy(rssUrl);
+    if (!text.includes('<entry')) throw new Error('no_entry_tag');
+    const doc     = new DOMParser().parseFromString(text, 'text/xml');
     const entries = Array.from(doc.querySelectorAll('entry'));
-    const items = entries.slice(0,10).map(entry => {
-      const title     = entry.querySelector('title')?.textContent || '';
-      const link      = entry.querySelector('link')?.getAttribute('href') || '';
+    const items   = entries.slice(0,10).map(entry => {
+      const title     = (entry.querySelector('title')?.textContent || '').trim().substring(0,120);
+      const link      = (entry.querySelector('link')?.getAttribute('href') || '').trim();
       const published = entry.querySelector('published')?.textContent || '';
-      const desc      = entry.querySelector('media\\:description, description')?.textContent?.substring(0,100) || '';
+      const desc      = (entry.querySelector('media\\:description, description')?.textContent || '').trim().substring(0,150);
       const d = published ? new Date(published).toISOString().split('T')[0] : today();
-      return {
-        id: 'iy' + Date.now() + Math.random().toString(36).slice(2,6),
-        title, desc, url: link, date: d, source: 'youtube'
-      };
+      return { id:'iy'+Date.now()+Math.random().toString(36).slice(2,6), title, desc, url:link, date:d, source:'youtube' };
     }).filter(i => i.title);
-    if (!items.length) throw new Error('no_items');
+    if (!items.length) throw new Error('parsed_but_empty');
     DB.set(userKey('intel_yt_'+compId), items);
     const comp = DB.get(userKey('competitors'),[]).find(c=>c.id===compId);
     el.innerHTML = items.slice(0,5).map(r => renderIntelItem(r, comp, 'youtube')).join('');
     showToast('✅ 已抓取 '+items.length+' 支 '+comp?.name+' 的最新影片', 'success');
   } catch(e) {
-    console.warn('fetchYoutubeRSS error:', e);
-    el.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:8px 0">
-      ⚠️ 抓取失敗。請確認頻道 ID 是否為 UC 開頭的格式，或前往該頻道頁面「關於」→「分享頻道」→「複製頻道 ID」取得正確 ID。
+    console.error('fetchYoutubeRSS error:', e);
+    const hint = e.message.includes('all_proxies_failed') ? '網路代理服務暫時無法連線，請稍後再試'
+                : e.message.includes('no_entry_tag')      ? '頻道 ID 可能有誤，回傳內容不含影片資料'
+                : '請確認頻道 ID 是否為 UC 開頭格式';
+    el.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:10px;background:#fff5f5;border-radius:7px;border:1px solid #fca5a5">
+      <strong>⚠️ 抓取失敗</strong><br><span style="color:#555">${hint}</span>
+      <div style="margin-top:8px;font-size:11px;color:var(--text-muted)">嘗試的 RSS：<span style="word-break:break-all">${rssUrl}</span></div>
     </div>`;
   }
 }
@@ -1822,9 +1862,7 @@ async function fetchRealData() {
     // ① Google Alerts RSS
     if (cs.alertsRss) {
       try {
-        const resp = await fetch(CORS_PROXY + encodeURIComponent(cs.alertsRss));
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const text = await resp.text();
+        const text = await fetchViaProxy(cs.alertsRss);
         const doc  = new DOMParser().parseFromString(text, 'application/xml');
         Array.from(doc.querySelectorAll('entry, item')).slice(0, 15).forEach(node => {
           const rawTitle = node.querySelector('title')?.textContent || '';
@@ -1857,9 +1895,7 @@ async function fetchRealData() {
         const rssUrl = ytId.startsWith('UC')
           ? 'https://www.youtube.com/feeds/videos.xml?channel_id=' + ytId
           : 'https://www.youtube.com/feeds/videos.xml?user=' + ytId.replace(/^@/,'');
-        const resp = await fetch(CORS_PROXY + encodeURIComponent(rssUrl));
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const text = await resp.text();
+        const text = await fetchViaProxy(rssUrl);
         const doc  = new DOMParser().parseFromString(text, 'text/xml');
         Array.from(doc.querySelectorAll('entry')).slice(0, 15).forEach(entry => {
           const title     = (entry.querySelector('title')?.textContent || '').trim().substring(0,120);
