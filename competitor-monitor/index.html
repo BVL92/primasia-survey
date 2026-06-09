@@ -430,7 +430,7 @@
       <div class="nav-item" onclick="showView('report')">
         <span class="nav-icon">📋</span> 監控報告
       </div>
-      <div class="nav-item" onclick="showView('intelTools')">
+      <div class="nav-item admin-only" style="display:none" onclick="showView('intelTools')">
         <span class="nav-icon">🛠️</span> 情報工具箱
       </div>
       <div class="nav-section admin-only" style="display:none">後台管理</div>
@@ -902,7 +902,8 @@ const FIREBASE_CONFIG = {
 };
 let cloudDB = null;
 let cloudListener = null;
-const SYNC_FIELDS = ['competitors','activities','channels','intel_setup'];
+const SYNC_FIELDS = ['competitors','activities','channels'];
+const SHARED_INTEL_DOC = 'shared_intel_config'; // 共用 Firebase 文件 ID（不綁定使用者）
 try {
   if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
   cloudDB = firebase.firestore();
@@ -1113,11 +1114,13 @@ async function bootApp() {
     } catch(e) { console.warn('Cloud initial load failed:', e); }
   }
 
+  // ①-b 載入共用情報設定（管理員或一般使用者皆會讀取，但只有管理員能修改）
+  await loadSharedIntelSetup();
+
   // ② 若雲端也沒有，才初始化空資料
   if (!DB.get(userKey('competitors'),  null)) DB.set(userKey('competitors'), []);
   if (!DB.get(userKey('activities'),   null)) DB.set(userKey('activities'),  []);
   if (!DB.get(userKey('channels'),     null)) DB.set(userKey('channels'), ['官網','Facebook','LINE OA','Instagram','YouTube','Google Ads','新開戶活動','ETF活動','KOL合作']);
-  if (!DB.get(userKey('intel_setup'),  null)) DB.set(userKey('intel_setup'), {});
 
   // ③ 啟動即時監聽（之後有其他裝置的變動會自動推過來）
   startCloudSync();
@@ -1756,14 +1759,27 @@ async function fetchViaProxy(url) {
   throw new Error('all_proxies_failed: ' + errs.join(' | '));
 }
 
-function getIntelSetup() { return DB.get(userKey('intel_setup'), {}); }
+// ── Intel Setup：共用設定，不綁定使用者 ──
+function getIntelSetup() {
+  return DB.get('intel_setup_shared', {});
+}
 function saveIntelSetup(data) {
-  DB.set(userKey('intel_setup'), data);
-  if (cloudDB && currentUser) {
-    cloudDB.collection('cm_monitor').doc(currentUser.id)
+  DB.set('intel_setup_shared', data);
+  // 寫入共用 Firebase 文件（管理員才能呼叫此函數）
+  if (cloudDB) {
+    cloudDB.collection('cm_monitor').doc(SHARED_INTEL_DOC)
       .set({ intel_setup: JSON.parse(JSON.stringify(data)) }, { merge: true })
-      .catch(e => console.warn('Intel setup sync failed:', e));
+      .catch(e => console.warn('Shared intel setup sync failed:', e));
   }
+}
+async function loadSharedIntelSetup() {
+  if (!cloudDB) return;
+  try {
+    const doc = await cloudDB.collection('cm_monitor').doc(SHARED_INTEL_DOC).get();
+    if (doc.exists && doc.data().intel_setup) {
+      DB.set('intel_setup_shared', doc.data().intel_setup);
+    }
+  } catch(e) { console.warn('Load shared intel setup failed:', e); }
 }
 
 // ── Main render ──
@@ -1940,7 +1956,8 @@ function renderIntelAlerts() {
       <div class="intel-setup-row">
         <input type="text" id="alerts_rss_${c.id}" value="${rssUrl}"
           placeholder="貼入 Google Alerts RSS 網址（https://www.google.com/alerts/feeds/…）"
-          onchange="saveAlertRss('${c.id}',this.value)" />
+          onchange="saveAlertRss('${c.id}',this.value)"
+          ${isAdmin() ? '' : 'readonly style="background:#f5f5f5;color:#999;cursor:not-allowed"'} />
         <button class="btn btn-outline" onclick="fetchAlertsRSS('${c.id}')">抓取</button>
       </div>
       <div id="alerts_result_${c.id}">
@@ -2039,7 +2056,8 @@ function renderIntelYoutube() {
       <div class="intel-setup-row">
         <input type="text" id="yt_id_${c.id}" value="${ytId}"
           placeholder="輸入頻道 ID（UCxxxxx…）或 @頻道名稱"
-          onchange="saveYtChannelId('${c.id}',this.value)" />
+          onchange="saveYtChannelId('${c.id}',this.value)"
+          ${isAdmin() ? '' : 'readonly style="background:#f5f5f5;color:#999;cursor:not-allowed"'} />
         <button class="btn btn-outline" onclick="fetchYoutubeRSS('${c.id}')">抓取</button>
       </div>
       <div id="yt_result_${c.id}">
@@ -2078,19 +2096,24 @@ function renderIntelItem(item, comp, source) {
 }
 
 // ── 儲存設定 ──
+function isAdmin() { return currentUser && currentUser.role === 'admin'; }
+
 function saveAlertRss(compId, value) {
+  if (!isAdmin()) { showToast('僅管理員可修改情報設定', 'error'); return; }
   const setup = getIntelSetup();
   if (!setup[compId]) setup[compId] = {};
   setup[compId].alertsRss = value.trim();
   saveIntelSetup(setup);
 }
 function saveYtChannelId(compId, value) {
+  if (!isAdmin()) { showToast('僅管理員可修改情報設定', 'error'); return; }
   const setup = getIntelSetup();
   if (!setup[compId]) setup[compId] = {};
   setup[compId].ytChannelId = value.trim();
   saveIntelSetup(setup);
 }
 function saveWebsiteUrl(compId, value) {
+  if (!isAdmin()) { showToast('僅管理員可修改情報設定', 'error'); return; }
   const setup = getIntelSetup();
   if (!setup[compId]) setup[compId] = {};
   setup[compId].websiteUrl = value.trim();
@@ -2160,10 +2183,10 @@ function renderIntelAdkw() {
         <div class="card-title" style="margin:0">🔍 ${comp.name}
           <span style="font-size:12px;font-weight:400;color:var(--text-muted);margin-left:8px">共記錄 ${activeCnt} 個關鍵字</span>
         </div>
-        <button onclick="openAddAdkwModal('${comp.id}')"
+        ${isAdmin() ? `<button onclick="openAddAdkwModal('${comp.id}')"
           style="background:var(--primary);color:#fff;border:none;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer">
           ＋ 新增關鍵字
-        </button>
+        </button>` : ''}
       </div>
 
       <!-- 查詢工具列 -->
@@ -2206,8 +2229,8 @@ function renderAdkwTable(compId, kws) {
         ${kw.note||'—'}
       </td>
       <td>
-        <button onclick="deleteAdkw('${compId}',${kws.indexOf(kw)})"
-          style="background:none;border:1px solid #fca5a5;color:var(--danger);border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer">🗑️</button>
+        ${isAdmin() ? `<button onclick="deleteAdkw('${compId}',${kws.indexOf(kw)})"
+          style="background:none;border:1px solid #fca5a5;color:var(--danger);border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer">🗑️</button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -2237,6 +2260,7 @@ function openAddAdkwModal(compId) {
 }
 
 function saveAdkw() {
+  if (!isAdmin()) { showToast('僅管理員可新增關鍵字記錄', 'error'); return; }
   const keyword = document.getElementById('adkwKeyword').value.trim();
   if (!keyword) { showToast('請輸入關鍵字', 'error'); return; }
   const data = getAdkwData(_adkwTargetComp);
@@ -2259,6 +2283,7 @@ function saveAdkw() {
 }
 
 function deleteAdkw(compId, idx) {
+  if (!isAdmin()) { showToast('僅管理員可刪除關鍵字記錄', 'error'); return; }
   if (!confirm('確定刪除此關鍵字記錄？')) return;
   const data = getAdkwData(compId);
   data.splice(idx, 1);
@@ -2349,7 +2374,8 @@ function renderIntelBanner() {
           value="${siteUrl}"
           placeholder="例：https://www.yuanta.com.tw/Pages/Activity/Activity.aspx"
           onchange="saveWebsiteUrl('${c.id}', this.value)"
-          style="flex:1;min-width:240px;padding:8px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:13px">
+          ${isAdmin() ? '' : 'readonly'}
+          style="flex:1;min-width:240px;padding:8px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;${isAdmin() ? '' : 'background:#f5f5f5;color:#999;cursor:not-allowed'}">
         <button class="btn btn-primary" id="bannerBtn_${c.id}" onclick="fetchBanners('${c.id}')">🔍 抓取 Banner</button>
       </div>
       <div id="banner_result_${c.id}">
