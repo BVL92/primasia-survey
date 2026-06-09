@@ -2139,6 +2139,7 @@ function switchIntelTab(tab) {
 async function fetchAllIntel() {
   const tab   = document.querySelector('.intel-tab.active')?.dataset?.tab || 'alerts';
   const comps = DB.get(userKey('competitors'), []);
+  const setup = getIntelSetup();   // ← 移到最前面，所有分支都能用
   if (!comps.length) { showToast('請先設定監控對手', 'error'); return; }
   if (tab === 'meta')   { showToast('Meta 廣告庫為手動開啟，請點擊各券商的按鈕', ''); return; }
   if (tab === 'banner') {
@@ -2146,10 +2147,9 @@ async function fetchAllIntel() {
     if (!configured.length) { showToast('請先在「官網活動 Banner」分頁輸入各競品的官網網址', 'error'); return; }
     showToast('⏳ 依序抓取 ' + configured.length + ' 家競品官網 Banner…');
     for (const c of configured) { await fetchBanners(c.id); }
+    showToast('✅ 全部競品 Banner 抓取完成，請勾選要加入的活動', 'success');
     return;
   }
-
-  const setup = getIntelSetup();
   const configured = comps.filter(c => tab === 'alerts'
     ? (setup[c.id] && setup[c.id].alertsRss)
     : (setup[c.id] && setup[c.id].ytChannelId));
@@ -2172,6 +2172,23 @@ async function fetchAllIntel() {
 
 // ── 一鍵將所有已抓取的情報加入即時動態 ──
 function importAllIntelToFeed() {
+  // Banner Tab：改為「加入全部已勾選」
+  const tab = document.querySelector('.intel-tab.active')?.dataset?.tab;
+  if (tab === 'banner') {
+    const comps = DB.get(userKey('competitors'), []);
+    const allChecked = [...document.querySelectorAll('[class^="banner-cb-"]:checked, [class*=" banner-cb-"]:checked')];
+    // 用 compId 分組呼叫
+    const byComp = {};
+    allChecked.forEach(cb => {
+      const cls = [...cb.classList].find(c => c.startsWith('banner-cb-'));
+      const cid = cls ? cls.replace('banner-cb-', '') : null;
+      if (cid) { if (!byComp[cid]) byComp[cid] = []; byComp[cid].push(cb); }
+    });
+    if (!Object.keys(byComp).length) { showToast('請先勾選要加入的活動項目', 'error'); return; }
+    Object.keys(byComp).forEach(cid => addSelectedBannersToFeed(cid));
+    return;
+  }
+
   const comps = DB.get(userKey('competitors'), []);
   if (!comps.length) { showToast('請先設定監控對手', 'error'); return; }
 
@@ -2470,22 +2487,74 @@ function renderIntelBanner() {
 
 function renderBannerCacheHtml(compId, items) {
   if (!items.length) return '<div style="color:var(--text-muted);font-size:13px">未找到 Banner 活動連結</div>';
-  return `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">找到 ${items.length} 個 Banner 活動連結：</div>` +
-    items.map((item, i) => `
-    <div style="border:1.5px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;background:#fafcff">
-      <div style="display:flex;gap:10px;align-items:flex-start">
-        ${item.imgSrc ? `<img src="${item.imgSrc}" style="width:120px;height:60px;object-fit:cover;border-radius:5px;flex-shrink:0;border:1px solid var(--border)" onerror="this.style.display='none'">` : ''}
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:13px;margin-bottom:3px;color:var(--text)">${item.title || '（未取得標題）'}</div>
-          ${item.desc ? `<div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:4px">${item.desc}</div>` : ''}
-          <a href="${item.url}" target="_blank" style="font-size:11px;color:var(--primary-light)">🔗 ${item.url}</a>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0">
-          <button onclick="addBannerToFeed('${compId}', ${i})" style="background:var(--success);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;white-space:nowrap">📡 加入動態</button>
-          <button onclick="addBannerToCampaign('${compId}', ${i})" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;white-space:nowrap">🎯 加入活動</button>
-        </div>
+  const rows = items.map((item, i) => `
+    <label style="display:flex;gap:10px;align-items:flex-start;border:1.5px solid var(--border);border-radius:8px;padding:11px 12px;margin-bottom:8px;background:#fafcff;cursor:pointer;transition:.15s"
+      onmouseover="this.style.background='#f0f5ff'" onmouseout="this.style.background='#fafcff'">
+      <input type="checkbox" class="banner-cb-${compId}" data-idx="${i}"
+        style="margin-top:3px;width:16px;height:16px;accent-color:var(--primary);flex-shrink:0;cursor:pointer">
+      ${item.imgSrc ? `<img src="${item.imgSrc}" style="width:110px;height:58px;object-fit:cover;border-radius:5px;flex-shrink:0;border:1px solid var(--border)" onerror="this.style.display='none'">` : ''}
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:13px;margin-bottom:3px;color:var(--text)">${item.title || '（未取得標題）'}</div>
+        ${item.desc ? `<div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:4px">${item.desc}</div>` : ''}
+        <a href="${item.url}" target="_blank" onclick="event.stopPropagation()" style="font-size:11px;color:var(--primary-light)">🔗 前往活動頁面</a>
       </div>
-    </div>`).join('');
+      <div style="flex-shrink:0">
+        <button onclick="event.preventDefault();event.stopPropagation();addBannerToCampaign('${compId}', ${i})"
+          style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;white-space:nowrap">🎯 加入活動</button>
+      </div>
+    </label>`).join('');
+
+  return `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:12px;color:var(--text-muted)">找到 <strong>${items.length}</strong> 個 Banner 活動連結
+        <label style="cursor:pointer;font-size:12px;color:var(--primary-light)">
+          <input type="checkbox" id="banner_all_${compId}" style="accent-color:var(--primary)"
+            onchange="toggleAllBanners('${compId}', this.checked)"> 全選
+        </label>
+      </div>
+      <button onclick="addSelectedBannersToFeed('${compId}')"
+        style="background:var(--success);color:#fff;border:none;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer">
+        📡 加入已勾選至即時動態
+      </button>
+    </div>
+    ${rows}`;
+}
+
+function toggleAllBanners(compId, checked) {
+  document.querySelectorAll('.banner-cb-'+compId).forEach(cb => cb.checked = checked);
+}
+
+function addSelectedBannersToFeed(compId) {
+  const checked = [...document.querySelectorAll('.banner-cb-'+compId+':checked')];
+  if (!checked.length) { showToast('請先勾選要加入的活動項目', 'error'); return; }
+  const items = DB.get(userKey('intel_banner_'+compId), []);
+  const activities = DB.get(userKey('activities'), []);
+  const existingUrls = new Set(activities.filter(a=>a.url).map(a=>a.url));
+  let added = 0;
+  checked.forEach(cb => {
+    const item = items[parseInt(cb.dataset.idx)];
+    if (!item) return;
+    if (item.url && existingUrls.has(item.url)) return;
+    activities.unshift({
+      id: 'a'+Date.now()+Math.random().toString(36).slice(2,5),
+      compId, channel:'官網', type:'促銷活動',
+      title: item.title, desc: item.desc||'',
+      date: item.date||today(), url: item.url||'',
+      addedBy: '官網 Banner 自動解析',
+    });
+    if (item.url) existingUrls.add(item.url);
+    added++;
+  });
+  if (added > 0) {
+    saveData('activities', activities);
+    showToast('✅ 已將 ' + added + ' 筆活動加入即時動態', 'success');
+    // 清除勾選
+    document.querySelectorAll('.banner-cb-'+compId).forEach(cb => cb.checked = false);
+    const allCb = document.getElementById('banner_all_'+compId);
+    if (allCb) allCb.checked = false;
+  } else {
+    showToast('所選項目已存在於即時動態中', '');
+  }
 }
 
 async function fetchBanners(compId) {
