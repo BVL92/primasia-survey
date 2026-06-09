@@ -542,6 +542,13 @@
         <div><h2>🛠️ 免費情報工具箱</h2><p>整合 Google Alerts、Meta 廣告庫與 YouTube，即時掌握競品最新動態</p></div>
         <button class="btn btn-primary" onclick="fetchAllIntel()">🔄 全部抓取</button>
       </div>
+      <!-- 頁面頂部工具列 -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;padding:12px 16px;background:var(--card);border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.06);align-items:center">
+        <span style="font-size:13px;font-weight:600;color:var(--text-muted);margin-right:4px">目前分頁：</span>
+        <button class="btn btn-primary" onclick="fetchAllIntel()">🔄 全部抓取</button>
+        <button class="btn btn-success" onclick="importAllIntelToFeed()">📥 全部加入動態</button>
+        <span style="font-size:12px;color:var(--text-muted);margin-left:4px">（將已抓取的所有情報一鍵匯入即時動態）</span>
+      </div>
       <!-- Tab Bar -->
       <div class="intel-tab-bar">
         <button class="intel-tab active" data-tab="alerts" onclick="switchIntelTab('alerts')">📰 Google Alerts 新聞</button>
@@ -1506,14 +1513,84 @@ function switchIntelTab(tab) {
   if (tab === 'youtube') renderIntelYoutube();
 }
 
-function fetchAllIntel() {
-  const tab = document.querySelector('.intel-tab.active')?.dataset?.tab || 'alerts';
+async function fetchAllIntel() {
+  const tab   = document.querySelector('.intel-tab.active')?.dataset?.tab || 'alerts';
   const comps = DB.get(userKey('competitors'), []);
   if (!comps.length) { showToast('請先設定監控對手', 'error'); return; }
-  showToast('⏳ 正在全部抓取…');
-  if (tab === 'alerts')  comps.forEach(c => fetchAlertsRSS(c.id));
-  if (tab === 'youtube') comps.forEach(c => fetchYoutubeRSS(c.id));
-  if (tab === 'meta')    showToast('Meta 廣告庫為手動開啟，請點擊各券商的按鈕', '');
+  if (tab === 'meta') { showToast('Meta 廣告庫為手動開啟，請點擊各券商的按鈕', ''); return; }
+
+  const setup = getIntelSetup();
+  const configured = comps.filter(c => tab === 'alerts'
+    ? (setup[c.id] && setup[c.id].alertsRss)
+    : (setup[c.id] && setup[c.id].ytChannelId));
+  if (!configured.length) {
+    showToast('尚未設定任何' + (tab==='alerts'?'Google Alerts RSS':'YouTube 頻道 ID') + '，請先填入後再抓取', 'error');
+    return;
+  }
+  showToast('⏳ 正在依序抓取 ' + configured.length + ' 家競品…');
+  let ok = 0, fail = [];
+  for (const c of configured) {
+    try {
+      if (tab === 'alerts')  await fetchAlertsRSS(c.id);
+      if (tab === 'youtube') await fetchYoutubeRSS(c.id);
+      ok++;
+    } catch(e) { fail.push(c.name); }
+  }
+  if (fail.length) showToast('⚠️ ' + ok + ' 家成功，' + fail.join('、') + ' 失敗，請個別確認', 'error');
+  else showToast('✅ 全部 ' + ok + ' 家抓取完成', 'success');
+}
+
+// ── 一鍵將所有已抓取的情報加入即時動態 ──
+function importAllIntelToFeed() {
+  const comps = DB.get(userKey('competitors'), []);
+  if (!comps.length) { showToast('請先設定監控對手', 'error'); return; }
+
+  const activities   = DB.get(userKey('activities'), []);
+  const existingUrls = new Set(activities.filter(a => a.url).map(a => a.url));
+  let totalAdded = 0;
+
+  comps.forEach(comp => {
+    // Google Alerts 快訊
+    DB.get(userKey('intel_alerts_'+comp.id), []).forEach(item => {
+      if (item.url && existingUrls.has(item.url)) return;
+      activities.unshift({
+        id: 'a'+Date.now()+Math.random().toString(36).slice(2,5),
+        compId: comp.id, channel: '官網', type: '媒體報導',
+        title: item.title, desc: item.desc || '',
+        date: item.date || today(), url: item.url || '',
+        addedBy: 'Google Alerts 自動匯入'
+      });
+      if (item.url) existingUrls.add(item.url);
+      totalAdded++;
+    });
+    // YouTube 影片
+    DB.get(userKey('intel_yt_'+comp.id), []).forEach(item => {
+      if (item.url && existingUrls.has(item.url)) return;
+      activities.unshift({
+        id: 'a'+Date.now()+Math.random().toString(36).slice(2,5),
+        compId: comp.id, channel: 'YouTube', type: 'KOL合作',
+        title: item.title, desc: item.desc || '',
+        date: item.date || today(), url: item.url || '',
+        addedBy: 'YouTube 自動匯入'
+      });
+      if (item.url) existingUrls.add(item.url);
+      totalAdded++;
+    });
+  });
+
+  if (totalAdded > 0) {
+    saveData('activities', activities);
+    showToast('✅ 已將 ' + totalAdded + ' 筆情報全部加入即時動態', 'success');
+    // 稍後跳到即時動態頁讓用戶看到結果
+    setTimeout(() => showView('feed'), 1200);
+  } else {
+    const hasCached = comps.some(c =>
+      DB.get(userKey('intel_alerts_'+c.id),[]).length ||
+      DB.get(userKey('intel_yt_'+c.id),[]).length
+    );
+    if (!hasCached) showToast('尚無已抓取的情報，請先按「全部抓取」', 'error');
+    else showToast('所有情報已全數加入，無重複項目', '');
+  }
 }
 
 // ── Google Alerts 標籤 ──
@@ -1753,18 +1830,27 @@ async function fetchAlertsRSS(compId) {
     showToast('✅ 已抓取 '+items.length+' 則 '+comp?.name+' 的 Google 新聞', 'success');
   } catch(e) {
     console.error('fetchAlertsRSS error:', e);
-    const hint = e.message.includes('all_proxies_failed') ? '網路代理服務暫時無法連線，請稍後再試（或確認網路連線正常）'
-                : e.message.includes('not_xml')           ? 'RSS 網址回傳非 XML 格式，請確認網址是否完整正確'
-                : e.message.includes('no_xml_nodes')      ? 'RSS 內容為空，此警報可能尚無資料，請稍後再試'
-                : 'RSS 網址可能有誤，請至 Google Alerts 重新複製 RSS 連結';
+    const errMsg = e.message || '';
+    let hint, diagnose = '';
+    if (errMsg.includes('all_proxies_failed')) {
+      const detail = errMsg.replace('all_proxies_failed: ','');
+      hint = '三個網路代理伺服器皆無法連線，可能是暫時性網路問題或該 RSS 網址需要登入權限。';
+      diagnose = `<div style="margin-top:6px;font-size:11px;color:#777;background:#fff;padding:6px 8px;border-radius:5px">詳細錯誤：${detail}</div>`;
+    } else if (errMsg.includes('not_xml')) {
+      hint = 'RSS 網址回傳的內容不是 XML 格式，網址可能不完整或已失效，請重新至 Google Alerts 複製 RSS 連結。';
+    } else {
+      hint = 'RSS 網址可能有誤，請確認是否複製完整（應以 https://www.google.com/alerts/feeds/ 開頭）。';
+    }
     el.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:10px;background:#fff5f5;border-radius:7px;border:1px solid #fca5a5">
       <strong>⚠️ 抓取失敗</strong><br><span style="color:#555">${hint}</span>
+      ${diagnose}
       <div style="margin-top:8px;padding:8px;background:#fff;border-radius:5px;font-size:11px;color:var(--text-muted)">
-        <strong>您設定的 RSS 網址：</strong><br>
+        <strong>目前設定的 RSS 網址：</strong><br>
         <span style="word-break:break-all">${rssUrl}</span>
       </div>
-      <div style="margin-top:8px">
-        <a href="${rssUrl}" target="_blank" style="font-size:12px;color:var(--primary-light)">🔗 直接開啟 RSS 網址確認是否可存取</a>
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+        <a href="${rssUrl}" target="_blank" style="font-size:12px;color:var(--primary-light)">🔗 直接開啟此網址確認</a>
+        <a href="https://www.google.com/alerts" target="_blank" style="font-size:12px;color:var(--primary-light)">⚙️ 前往 Google Alerts 重設</a>
       </div>
     </div>`;
   }
