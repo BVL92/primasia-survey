@@ -1132,6 +1132,11 @@ async function bootApp() {
   document.querySelectorAll('.admin-only').forEach(el => {
     el.style.display = currentUser.role === 'admin' ? '' : 'none';
   });
+  // 一般使用者的「抓取情報資料」按鈕改為「同步情報資料」，語意更清楚
+  const fetchBtn = document.getElementById('fetchRealBtn');
+  if (fetchBtn && currentUser.role !== 'admin') {
+    fetchBtn.textContent = '🔄 同步情報資料';
+  }
 
   // ① 先從 Firebase 載入雲端資料（跨裝置同步的關鍵）
   if (cloudDB) {
@@ -3158,13 +3163,32 @@ async function fetchRealData() {
   const comps = DB.get(userKey('competitors'), []);
   if (!comps.length) { showToast('請先設定監控對手', 'error'); return; }
 
+  // ── 一般使用者：從管理員已抓的共用情報庫同步，不自行抓取 ──
+  if (!isAdmin()) {
+    const btn = document.getElementById('fetchRealBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="loading-spinner"></span> 同步中…'; }
+    showToast('⏳ 正在從管理員情報庫同步最新資料…');
+    await loadSharedFeedAndSync();
+    if (btn) { btn.disabled = false; btn.innerHTML = '🔄 同步情報資料'; }
+    renderFeed();
+    return;
+  }
+
+  // ── 管理員：以競品名稱查 setup（因為 setup key 使用 bl_ 前綴或 admin 的 comp id）──
+  const allComps = getAllUsersCompetitors(); // 含 bl_ id 的完整清單
+  const nameToSetupComp = Object.fromEntries(allComps.map(c => [c.name, c]));
   const setup = getIntelSetup();
-  const hasAlerts = comps.some(c => setup[c.id] && setup[c.id].alertsRss);
-  const hasYt     = comps.some(c => setup[c.id] && setup[c.id].ytChannelId);
+  // 把管理員自己的競品名稱對應到 setup 中的正確 id
+  const hasAlerts = comps.some(c => {
+    const sc = nameToSetupComp[c.name];
+    return sc && setup[sc.id]?.alertsRss;
+  });
+  const hasYt = comps.some(c => {
+    const sc = nameToSetupComp[c.name];
+    return sc && setup[sc.id]?.ytChannelId;
+  });
   if (!hasAlerts && !hasYt) {
-    showToast('請先至「🛠️ 情報工具箱」設定 Google Alerts RSS 或 YouTube 頻道 ID', 'error');
-    // 跳轉到設定頁
-    setTimeout(() => showView('intelTools'), 1200);
+    showToast('請先至「⚙️ 情報來源設定」填入 Google Alerts RSS 或 YouTube 頻道 ID', 'error');
     return;
   }
 
@@ -3181,7 +3205,9 @@ async function fetchRealData() {
   const errors   = [];
 
   for (const comp of comps) {
-    const cs = setup[comp.id] || {};
+    // 用競品名稱找到 setup 中對應的 key（bl_ 前綴或 admin 自己的 id）
+    const setupComp = nameToSetupComp[comp.name];
+    const cs = (setupComp && setup[setupComp.id]) || {};
 
     // ① Google Alerts RSS
     if (cs.alertsRss) {
