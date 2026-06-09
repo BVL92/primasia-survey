@@ -1784,7 +1784,12 @@ function switchIntelTab(tab) {
   const importBtn = document.getElementById('intelImportBtn');
   const exportBtn = document.getElementById('intelExportBtn');
   if (fetchBtn)  fetchBtn.style.display  = isAdkw ? 'none' : '';
-  if (importBtn) importBtn.style.display = isAdkw ? 'none' : '';
+  if (importBtn) {
+    importBtn.style.display = isAdkw ? 'none' : '';
+    importBtn.textContent = tab === 'banner'
+      ? '📥 加入已勾選至即時動態'
+      : '📥 全部加入即時動態';
+  }
   if (exportBtn) exportBtn.style.display = isAdkw ? '' : 'none';
 
   if (tab === 'alerts')  renderIntelAlerts();
