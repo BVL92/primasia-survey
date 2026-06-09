@@ -1856,8 +1856,8 @@ function switchIntelTab(tab) {
 
 async function fetchAllIntel() {
   const tab   = document.querySelector('.intel-tab.active')?.dataset?.tab || 'alerts';
-  const comps = DB.get(userKey('competitors'), []);
-  const setup = getIntelSetup();   // ← 移到最前面，所有分支都能用
+  const comps = getAllUsersCompetitors();
+  const setup = getIntelSetup();
   if (!comps.length) { showToast('請先設定監控對手', 'error'); return; }
   if (tab === 'meta')   { showToast('Meta 廣告庫為手動開啟，請點擊各券商的按鈕', ''); return; }
   if (tab === 'banner') {
@@ -1893,7 +1893,6 @@ function importAllIntelToFeed() {
   // Banner Tab：改為「加入全部已勾選」
   const tab = document.querySelector('.intel-tab.active')?.dataset?.tab;
   if (tab === 'banner') {
-    const comps = DB.get(userKey('competitors'), []);
     const allChecked = [...document.querySelectorAll('[class^="banner-cb-"]:checked, [class*=" banner-cb-"]:checked')];
     // 用 compId 分組呼叫
     const byComp = {};
@@ -1907,7 +1906,7 @@ function importAllIntelToFeed() {
     return;
   }
 
-  const comps = DB.get(userKey('competitors'), []);
+  const comps = getAllUsersCompetitors();
   if (!comps.length) { showToast('請先設定監控對手', 'error'); return; }
 
   const activities   = DB.get(userKey('activities'), []);
@@ -2730,7 +2729,7 @@ function resetIntelSetup() {
 // ══════════════════════════════════════════
 
 function renderIntelBanner() {
-  const comps = DB.get(userKey('competitors'), []);
+  const comps = getAllUsersCompetitors();
   const setup = getIntelSetup();
   let html = `
     <div class="intel-notice" style="background:#f0f9ff;border-color:#7dd3fc">
