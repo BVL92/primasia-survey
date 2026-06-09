@@ -2392,29 +2392,47 @@ async function renderIntelSetupTab() {
   }
 }
 
-// 從 Firebase 合併所有使用者的競品清單（去重，以 name 為唯一鍵）
+// 取得完整競品清單：以 BROKER_LIST 全部 33 家為基底，使用者實際設定的競品再疊加覆蓋
+// （使用者設定的競品保留原始 id，以維持 activities / 快取相容性）
 async function getAllUsersCompetitors() {
-  // 先取自己帳號的競品（確保本機資料也納入）
-  const myComps = DB.get(userKey('competitors'), []);
   const merged = new Map(); // name → comp object
-  myComps.forEach(c => { if (c.name) merged.set(c.name, c); });
 
+  // ① 先以 BROKER_LIST 全部券商為基底（穩定 id：bl_ + 名稱）
+  BROKER_LIST.forEach(b => {
+    merged.set(b.name, {
+      id:   'bl_' + b.name,  // 穩定、不變的 id
+      name: b.name,
+      url:  b.url  || '',
+      fb:   b.fb   || '',
+      ig:   b.ig   || '',
+      yt:   b.yt   || '',
+      line: b.line || ''
+    });
+  });
+
+  // ② 管理員自己設定的競品覆蓋（保留原本 id，以免快取失效）
+  DB.get(userKey('competitors'), []).forEach(c => {
+    if (c.name) merged.set(c.name, c);
+  });
+
+  // ③ 其他使用者在 Firebase 設定的競品也納入（補充不在 BROKER_LIST 的自訂券商）
   if (cloudDB) {
     try {
-      // 讀取 cm_monitor 集合下所有文件（管理員帳號有讀取權限）
       const snapshot = await cloudDB.collection('cm_monitor').get();
       snapshot.docs.forEach(doc => {
-        // 跳過共用設定文件
-        if (doc.id === SHARED_INTEL_DOC) return;
+        if (doc.id === SHARED_INTEL_DOC || doc.id === SHARED_FEED_DOC) return;
         const data = doc.data();
         if (Array.isArray(data.competitors)) {
           data.competitors.forEach(c => {
-            if (c.name && !merged.has(c.name)) merged.set(c.name, c);
+            // 只補 BROKER_LIST 以外的自訂券商；BROKER_LIST 已有的以步驟②結果為準
+            if (c.name && !BROKER_LIST.some(b => b.name === c.name) && !merged.has(c.name)) {
+              merged.set(c.name, c);
+            }
           });
         }
       });
     } catch(e) {
-      console.warn('讀取所有使用者競品失敗，僅顯示本帳號競品:', e);
+      console.warn('讀取其他使用者競品失敗（BROKER_LIST 仍完整顯示）:', e);
     }
   }
 
