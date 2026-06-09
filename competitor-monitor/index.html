@@ -211,6 +211,26 @@
   .period-btn:hover { border-color:var(--accent); color:var(--accent); }
   .period-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; }
 
+  /* ── ADKW MODULE ── */
+  .adkw-comp-card { margin-bottom:20px; }
+  .adkw-tool-bar  { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; align-items:center; }
+  .adkw-tool-btn  { display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; border:none; text-decoration:none; transition:.15s; }
+  .adkw-tool-btn.spyfu   { background:#ff6b35; color:#fff; }
+  .adkw-tool-btn.spyfu:hover { background:#e55a27; }
+  .adkw-tool-btn.transp  { background:#4285f4; color:#fff; }
+  .adkw-tool-btn.transp:hover { background:#3070d4; }
+  .adkw-tool-btn.semrush { background:#ff642d; color:#fff; opacity:.8; }
+  .adkw-kw-table  { width:100%; border-collapse:collapse; font-size:12.5px; margin-top:10px; }
+  .adkw-kw-table thead tr { background:var(--primary); color:#fff; }
+  .adkw-kw-table th { padding:7px 10px; text-align:left; font-size:11.5px; font-weight:700; }
+  .adkw-kw-table tbody tr:nth-child(even) { background:#f8fafc; }
+  .adkw-kw-table td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  .match-badge { display:inline-block; border-radius:4px; padding:1px 7px; font-size:10.5px; font-weight:700; }
+  .match-broad  { background:#dbeafe; color:#1e40af; }
+  .match-phrase { background:#fef3c7; color:#92400e; }
+  .match-exact  { background:#d1fae5; color:#065f46; }
+  .adkw-empty   { text-align:center; padding:24px; color:var(--text-muted); font-size:13px; }
+
   /* ── ADD ACTIVITY MODAL ── */
   .add-modal { width: 580px; }
   .add-modal .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -550,19 +570,22 @@
       <div class="page-header">
         <div><h2>🛠️ 免費情報工具箱</h2><p>整合 Google Alerts、Meta 廣告庫與 YouTube，即時掌握競品最新動態</p></div>
         <div style="display:flex;gap:8px;align-items:center">
-          <button class="btn btn-primary" onclick="fetchAllIntel()">🔄 全部抓取</button>
-          <button class="btn btn-success" onclick="importAllIntelToFeed()">📥 加入已勾選至即時動態</button>
+          <button class="btn btn-primary" id="intelFetchBtn" onclick="fetchAllIntel()">🔄 全部抓取</button>
+          <button class="btn btn-success" id="intelImportBtn" onclick="importAllIntelToFeed()">📥 加入已勾選至即時動態</button>
+          <button class="btn btn-outline" id="intelExportBtn" style="display:none" onclick="exportAdkwPDF()">📄 匯出關鍵字報告</button>
         </div>
       </div>
       <!-- Tab Bar -->
       <div class="intel-tab-bar">
         <button class="intel-tab active" data-tab="alerts"  onclick="switchIntelTab('alerts')">📰 Google Alerts 新聞</button>
         <button class="intel-tab"        data-tab="banner"  onclick="switchIntelTab('banner')">🌐 官網活動 Banner</button>
+        <button class="intel-tab"        data-tab="adkw"    onclick="switchIntelTab('adkw')">🔍 Google Ads 關鍵字</button>
         <button class="intel-tab"        data-tab="meta"    onclick="switchIntelTab('meta')">📢 Meta 廣告庫</button>
         <button class="intel-tab"        data-tab="youtube" onclick="switchIntelTab('youtube')">▶️ YouTube 頻道</button>
       </div>
       <div id="intelAlertsContent"  class="intel-tab-content"></div>
       <div id="intelBannerContent"  class="intel-tab-content" style="display:none"></div>
+      <div id="intelAdkwContent"    class="intel-tab-content" style="display:none"></div>
       <div id="intelMetaContent"    class="intel-tab-content" style="display:none"></div>
       <div id="intelYoutubeContent" class="intel-tab-content" style="display:none"></div>
     </div>
@@ -674,6 +697,60 @@
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal('addActivityModal')">取消</button>
       <button class="btn btn-primary" onclick="addActivity()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Google Ads 關鍵字 Modal -->
+<div class="modal-overlay" id="adkwModal">
+  <div class="modal" style="width:520px">
+    <h3 id="adkwModalTitle">＋ 新增 Google Ads 關鍵字</h3>
+    <div class="form-group">
+      <label>關鍵字 <span style="color:red">*</span></label>
+      <input type="text" id="adkwKeyword" placeholder="例：開戶優惠、證券開戶、股票手續費"
+        style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:14px"
+        onkeydown="if(event.key==='Enter')saveAdkw()">
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="flex:1">
+        <label>比對類型</label>
+        <select id="adkwMatchType" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:14px">
+          <option>廣泛比對</option>
+          <option>片語比對</option>
+          <option>完全比對</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex:1">
+        <label>預估 CPC（NT$）<span style="font-size:11px;color:var(--text-muted)">選填</span></label>
+        <input type="number" id="adkwCpc" placeholder="例：25" min="0" step="0.5"
+          style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:14px">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="flex:1">
+        <label>資料來源</label>
+        <select id="adkwSource" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:14px">
+          <option>SpyFu</option>
+          <option>SEMrush</option>
+          <option>Ahrefs</option>
+          <option>人工觀察</option>
+          <option>其他</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex:1">
+        <label>記錄日期</label>
+        <input type="date" id="adkwDate"
+          style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:14px">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>備註 <span style="font-size:11px;color:var(--text-muted)">（廣告內容、特殊觀察等）</span></label>
+      <textarea id="adkwNote" rows="2" placeholder="例：廣告標題含「免手續費」，指向開戶頁，預算看起來較大"
+        style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:14px;resize:vertical"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('adkwModal')">取消</button>
+      <button class="btn btn-primary" onclick="saveAdkw()">💾 儲存關鍵字</button>
     </div>
   </div>
 </div>
@@ -1701,8 +1778,18 @@ function switchIntelTab(tab) {
   document.querySelectorAll('.intel-tab-content').forEach(c => {
     c.style.display = c.id === 'intel' + tab.charAt(0).toUpperCase() + tab.slice(1) + 'Content' ? 'block' : 'none';
   });
+  // 依分頁顯示/隱藏頂部按鈕
+  const isAdkw = tab === 'adkw';
+  const fetchBtn  = document.getElementById('intelFetchBtn');
+  const importBtn = document.getElementById('intelImportBtn');
+  const exportBtn = document.getElementById('intelExportBtn');
+  if (fetchBtn)  fetchBtn.style.display  = isAdkw ? 'none' : '';
+  if (importBtn) importBtn.style.display = isAdkw ? 'none' : '';
+  if (exportBtn) exportBtn.style.display = isAdkw ? '' : 'none';
+
   if (tab === 'alerts')  renderIntelAlerts();
   if (tab === 'banner')  renderIntelBanner();
+  if (tab === 'adkw')    renderIntelAdkw();
   if (tab === 'meta')    renderIntelMeta();
   if (tab === 'youtube') renderIntelYoutube();
 }
@@ -2007,6 +2094,218 @@ function saveWebsiteUrl(compId, value) {
 
 // ══════════════════════════════════════════
 //  🌐 官網 Banner 活動抓取模組
+// ══════════════════════════════════════════
+//  🔍 Google Ads 關鍵字追蹤模組
+// ══════════════════════════════════════════
+
+const ADKW_MATCH_TYPES = ['廣泛比對','片語比對','完全比對'];
+const ADKW_SOURCES = ['SpyFu','SEMrush','Ahrefs','人工觀察','其他'];
+
+function getAdkwData(compId) {
+  return DB.get(userKey('intel_adkw_' + compId), []);
+}
+function saveAdkwData(compId, data) {
+  DB.set(userKey('intel_adkw_' + compId), data);
+}
+
+function renderIntelAdkw() {
+  const comps = DB.get(userKey('competitors'), []);
+  const el = document.getElementById('intelAdkwContent');
+  if (!el) return;
+
+  let html = `
+    <div class="intel-notice" style="background:#f0f4ff;border-color:#93c5fd">
+      <span style="font-size:26px;flex-shrink:0">🔍</span>
+      <div>
+        <div style="font-weight:700;color:#1e3a8a;margin-bottom:5px">Google Ads 競品關鍵字追蹤</div>
+        <p style="color:#1e40af;font-size:13px;line-height:1.7">
+          點擊各競品的 <strong>SpyFu</strong> 或 <strong>Google 透明度中心</strong> 按鈕查詢廣告資訊，
+          再將查到的關鍵字手動記錄至下方表格，系統會幫您長期保存並比對趨勢。
+        </p>
+        <p style="font-size:12px;color:#3b82f6;margin-top:3px">
+          💡 SpyFu 免費版每天可查詢約 3 次；Google 透明度中心免費但只顯示廣告文案（不含關鍵字）
+        </p>
+      </div>
+    </div>`;
+
+  if (!comps.length) {
+    html += '<div class="empty-state"><div class="empty-icon">🏢</div><p>請先前往「監控對手設定」新增要監控的券商</p></div>';
+    el.innerHTML = html; return;
+  }
+
+  comps.forEach(comp => {
+    const kws = getAdkwData(comp.id);
+    const activeCnt = kws.length;
+    // 猜測 domain（從 websites 欄位或名稱推斷）
+    const setup = getIntelSetup();
+    const siteUrl = setup[comp.id]?.websiteUrl || '';
+    let domain = '';
+    try { domain = siteUrl ? new URL(siteUrl).hostname.replace('www.','') : ''; } catch {}
+
+    const spyfuUrl    = domain
+      ? `https://www.spyfu.com/overview/domain?query=${domain}`
+      : `https://www.spyfu.com/overview/domain?query=${encodeURIComponent(comp.name)}+證券`;
+    const transpUrl   = domain
+      ? `https://adstransparency.google.com/?region=anywhere&domain=${domain}`
+      : `https://adstransparency.google.com/?region=anywhere`;
+
+    html += `
+    <div class="card adkw-comp-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <div class="card-title" style="margin:0">🔍 ${comp.name}
+          <span style="font-size:12px;font-weight:400;color:var(--text-muted);margin-left:8px">共記錄 ${activeCnt} 個關鍵字</span>
+        </div>
+        <button onclick="openAddAdkwModal('${comp.id}')"
+          style="background:var(--primary);color:#fff;border:none;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer">
+          ＋ 新增關鍵字
+        </button>
+      </div>
+
+      <!-- 查詢工具列 -->
+      <div class="adkw-tool-bar">
+        <span style="font-size:12px;font-weight:600;color:var(--text-muted)">免費查詢工具：</span>
+        <a href="${spyfuUrl}" target="_blank" class="adkw-tool-btn spyfu">
+          <img src="https://www.spyfu.com/favicon.ico" style="width:14px;height:14px" onerror="this.style.display='none'">
+          SpyFu 免費查詢
+        </a>
+        <a href="${transpUrl}" target="_blank" class="adkw-tool-btn transp">
+          <img src="https://www.google.com/favicon.ico" style="width:14px;height:14px">
+          Google 廣告透明度
+        </a>
+        <span style="font-size:11px;color:var(--text-muted);margin-left:4px">
+          查到關鍵字後點「＋ 新增關鍵字」記錄
+        </span>
+      </div>
+
+      <!-- 關鍵字表格 -->
+      ${renderAdkwTable(comp.id, kws)}
+    </div>`;
+  });
+
+  el.innerHTML = html;
+}
+
+function renderAdkwTable(compId, kws) {
+  if (!kws.length) return `<div class="adkw-empty">尚未記錄任何關鍵字<br><span style="font-size:12px">點擊上方工具查詢後，再按「＋ 新增關鍵字」記錄</span></div>`;
+
+  const sorted = [...kws].sort((a,b) => (b.date||'').localeCompare(a.date||''));
+  const rows = sorted.map((kw, i) => {
+    const matchCls = kw.matchType === '廣泛比對' ? 'match-broad' : kw.matchType === '片語比對' ? 'match-phrase' : 'match-exact';
+    return `<tr>
+      <td style="font-weight:600;color:var(--text)">${kw.keyword}</td>
+      <td><span class="match-badge ${matchCls}">${kw.matchType||'—'}</span></td>
+      <td>${kw.cpc ? 'NT$ '+kw.cpc : '—'}</td>
+      <td><span style="background:#f0f4f9;border-radius:4px;padding:2px 7px;font-size:11px">${kw.source||'—'}</span></td>
+      <td style="color:var(--text-muted)">${kw.date||'—'}</td>
+      <td style="color:var(--text-muted);font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(kw.note||'').replace(/"/g,"'")}">
+        ${kw.note||'—'}
+      </td>
+      <td>
+        <button onclick="deleteAdkw('${compId}',${kws.indexOf(kw)})"
+          style="background:none;border:1px solid #fca5a5;color:var(--danger);border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  return `<table class="adkw-kw-table">
+    <thead><tr>
+      <th>關鍵字</th><th>比對類型</th><th>預估CPC</th><th>資料來源</th><th>記錄日期</th><th>備註</th><th></th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+// ── Modal ──
+let _adkwTargetComp = '';
+function openAddAdkwModal(compId) {
+  _adkwTargetComp = compId;
+  const comp = DB.get(userKey('competitors'),[]).find(c=>c.id===compId);
+  document.getElementById('adkwModalTitle').textContent = `＋ 新增關鍵字：${comp?.name||''}`;
+  document.getElementById('adkwKeyword').value  = '';
+  document.getElementById('adkwMatchType').value = '廣泛比對';
+  document.getElementById('adkwCpc').value      = '';
+  document.getElementById('adkwSource').value   = 'SpyFu';
+  document.getElementById('adkwNote').value     = '';
+  document.getElementById('adkwDate').value     = today();
+  openModal('adkwModal');
+  setTimeout(() => document.getElementById('adkwKeyword').focus(), 100);
+}
+
+function saveAdkw() {
+  const keyword = document.getElementById('adkwKeyword').value.trim();
+  if (!keyword) { showToast('請輸入關鍵字', 'error'); return; }
+  const data = getAdkwData(_adkwTargetComp);
+  // 防重複
+  if (data.some(k => k.keyword === keyword)) {
+    if (!confirm(`「${keyword}」已記錄過，確定要再新增一筆？`)) return;
+  }
+  data.unshift({
+    keyword,
+    matchType: document.getElementById('adkwMatchType').value,
+    cpc:       document.getElementById('adkwCpc').value.trim(),
+    source:    document.getElementById('adkwSource').value,
+    note:      document.getElementById('adkwNote').value.trim(),
+    date:      document.getElementById('adkwDate').value || today(),
+  });
+  saveAdkwData(_adkwTargetComp, data);
+  closeModal('adkwModal');
+  showToast(`✅ 關鍵字「${keyword}」已記錄`, 'success');
+  renderIntelAdkw();
+}
+
+function deleteAdkw(compId, idx) {
+  if (!confirm('確定刪除此關鍵字記錄？')) return;
+  const data = getAdkwData(compId);
+  data.splice(idx, 1);
+  saveAdkwData(compId, data);
+  showToast('🗑️ 已刪除', 'success');
+  renderIntelAdkw();
+}
+
+function exportAdkwPDF() {
+  const comps = DB.get(userKey('competitors'), []);
+  let bodyRows = '';
+  comps.forEach(comp => {
+    const kws = getAdkwData(comp.id);
+    if (!kws.length) return;
+    bodyRows += `<tr style="background:#e8eef7"><td colspan="6" style="font-weight:700;padding:8px 10px;color:#1a3a5c;border-top:2px solid #1a3a5c">🔍 ${comp.name}（${kws.length} 個關鍵字）</td></tr>`;
+    [...kws].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).forEach(kw => {
+      bodyRows += `<tr><td>${kw.keyword}</td><td>${kw.matchType||'—'}</td><td>${kw.cpc?'NT$ '+kw.cpc:'—'}</td><td>${kw.source||'—'}</td><td>${kw.date||'—'}</td><td>${kw.note||'—'}</td></tr>`;
+    });
+  });
+  if (!bodyRows) { showToast('目前無關鍵字資料可匯出', 'error'); return; }
+  const html = `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8">
+<title>競品 Google Ads 關鍵字報告 ${today()}</title>
+<style>
+  @page { size: A4 landscape; margin: 14mm; }
+  body { font-family:'Microsoft JhengHei','Segoe UI',sans-serif; font-size:11px; color:#1e2d40; margin:0; }
+  .rh { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2.5px solid #1a3a5c; padding-bottom:10px; margin-bottom:12px; }
+  .rh h1 { font-size:17px; color:#1a3a5c; margin:0 0 3px; }
+  .meta { font-size:10px; color:#6b7c93; text-align:right; line-height:1.8; }
+  table { width:100%; border-collapse:collapse; }
+  thead tr { background:#1a3a5c; color:#fff; }
+  th { padding:7px 9px; font-size:10px; font-weight:700; text-align:left; }
+  td { padding:5.5px 9px; border-bottom:1px solid #e5e9ef; font-size:10.5px; }
+  tbody tr:nth-child(even):not([style]) { background:#f8fafc; }
+  .footer { margin-top:12px; text-align:center; font-size:9px; color:#aaa; border-top:1px solid #e5e9ef; padding-top:7px; }
+</style></head><body>
+<div class="rh">
+  <div><h1>🔍 競品 Google Ads 關鍵字報告</h1><div style="font-size:11px;color:#6b7c93">犇亞證券 — 同業戰情監控系統</div></div>
+  <div class="meta">產出日期：${today()}<br>產出人員：${currentUser.displayName}</div>
+</div>
+<table>
+  <thead><tr><th>關鍵字</th><th>比對類型</th><th>預估CPC</th><th>資料來源</th><th>記錄日期</th><th>備註</th></tr></thead>
+  <tbody>${bodyRows}</tbody>
+</table>
+<div class="footer">本報告由犇亞證券同業戰情監控系統自動產生 — ${today()}</div>
+</body></html>`;
+  const w = window.open('','_blank','width=1100,height=750');
+  if (!w) { showToast('請允許彈出視窗', 'error'); return; }
+  w.document.write(html); w.document.close(); w.focus();
+  setTimeout(()=>w.print(), 700);
+  showToast('✅ 報告視窗已開啟，請選擇「另存為 PDF」', 'success');
+}
+
 // ══════════════════════════════════════════
 
 function renderIntelBanner() {
