@@ -211,6 +211,25 @@
   .period-btn:hover { border-color:var(--accent); color:var(--accent); }
   .period-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; }
 
+  /* ── INTEL SETUP TAB ── */
+  .intel-setup-table { width:100%; border-collapse:collapse; margin-top:16px; }
+  .intel-setup-table thead tr { background:var(--primary); color:#fff; }
+  .intel-setup-table th { padding:10px 14px; font-size:12px; font-weight:700; text-align:left; }
+  .intel-setup-table tbody tr { border-bottom:1px solid var(--border); transition:.15s; }
+  .intel-setup-table tbody tr:hover { background:#f5f8ff; }
+  .intel-setup-table td { padding:10px 14px; font-size:13px; vertical-align:middle; }
+  .intel-setup-table td:first-child { font-weight:700; color:var(--primary); white-space:nowrap; }
+  .setup-status-ok   { color:#1a7a40; font-weight:600; }
+  .setup-status-none { color:#aaa; }
+  .setup-locked-banner { display:flex;align-items:center;justify-content:space-between;padding:12px 18px;background:#d4f5e2;border:1.5px solid #1a7a40;border-radius:10px;margin-bottom:18px; }
+  .setup-edit-form { background:var(--card);border:1.5px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px; }
+  .setup-comp-header { font-size:15px;font-weight:700;color:var(--primary);margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid var(--border);display:flex;align-items:center;gap:8px; }
+  .setup-field-row { display:grid;grid-template-columns:140px 1fr;align-items:center;gap:10px;margin-bottom:10px; }
+  .setup-field-row label { font-size:13px;font-weight:600;color:var(--text-muted); }
+  .setup-field-row input { width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;color:var(--text); }
+  .setup-field-row input:focus { border-color:var(--primary-light);outline:none; }
+  .setup-action-bar { display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;align-items:center; }
+
   /* ── ADKW MODULE ── */
   .adkw-comp-card { margin-bottom:20px; }
   .adkw-tool-bar  { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; align-items:center; }
@@ -577,13 +596,15 @@
       </div>
       <!-- Tab Bar -->
       <div class="intel-tab-bar">
-        <button class="intel-tab active" data-tab="alerts"  onclick="switchIntelTab('alerts')">📰 Google Alerts 新聞</button>
-        <button class="intel-tab"        data-tab="banner"  onclick="switchIntelTab('banner')">🌐 官網活動 Banner</button>
-        <button class="intel-tab"        data-tab="adkw"    onclick="switchIntelTab('adkw')">🔍 Google Ads 關鍵字</button>
+        <button class="intel-tab active" data-tab="setup"   onclick="switchIntelTab('setup')">⚙️ 情報來源設定</button>
+        <button class="intel-tab"        data-tab="alerts"  onclick="switchIntelTab('alerts')">📰 Google Alerts</button>
+        <button class="intel-tab"        data-tab="banner"  onclick="switchIntelTab('banner')">🌐 官網 Banner</button>
+        <button class="intel-tab"        data-tab="adkw"    onclick="switchIntelTab('adkw')">🔍 Google Ads</button>
         <button class="intel-tab"        data-tab="meta"    onclick="switchIntelTab('meta')">📢 Meta 廣告庫</button>
-        <button class="intel-tab"        data-tab="youtube" onclick="switchIntelTab('youtube')">▶️ YouTube 頻道</button>
+        <button class="intel-tab"        data-tab="youtube" onclick="switchIntelTab('youtube')">▶️ YouTube</button>
       </div>
-      <div id="intelAlertsContent"  class="intel-tab-content"></div>
+      <div id="intelSetupContent"   class="intel-tab-content"></div>
+      <div id="intelAlertsContent"  class="intel-tab-content" style="display:none"></div>
       <div id="intelBannerContent"  class="intel-tab-content" style="display:none"></div>
       <div id="intelAdkwContent"    class="intel-tab-content" style="display:none"></div>
       <div id="intelMetaContent"    class="intel-tab-content" style="display:none"></div>
@@ -1784,7 +1805,7 @@ async function loadSharedIntelSetup() {
 
 // ── Main render ──
 function renderIntelTools() {
-  switchIntelTab(document.querySelector('.intel-tab.active')?.dataset?.tab || 'alerts');
+  switchIntelTab('setup');
 }
 
 function switchIntelTab(tab) {
@@ -1795,19 +1816,21 @@ function switchIntelTab(tab) {
     c.style.display = c.id === 'intel' + tab.charAt(0).toUpperCase() + tab.slice(1) + 'Content' ? 'block' : 'none';
   });
   // 依分頁顯示/隱藏頂部按鈕
-  const isAdkw = tab === 'adkw';
+  const isSetup = tab === 'setup';
+  const isAdkw  = tab === 'adkw';
   const fetchBtn  = document.getElementById('intelFetchBtn');
   const importBtn = document.getElementById('intelImportBtn');
   const exportBtn = document.getElementById('intelExportBtn');
-  if (fetchBtn)  fetchBtn.style.display  = isAdkw ? 'none' : '';
+  if (fetchBtn)  fetchBtn.style.display  = (isSetup || isAdkw) ? 'none' : '';
   if (importBtn) {
-    importBtn.style.display = isAdkw ? 'none' : '';
+    importBtn.style.display = (isSetup || isAdkw) ? 'none' : '';
     importBtn.textContent = tab === 'banner'
       ? '📥 加入已勾選至即時動態'
       : '📥 全部加入即時動態';
   }
   if (exportBtn) exportBtn.style.display = isAdkw ? '' : 'none';
 
+  if (tab === 'setup')   renderIntelSetupTab();
   if (tab === 'alerts')  renderIntelAlerts();
   if (tab === 'banner')  renderIntelBanner();
   if (tab === 'adkw')    renderIntelAdkw();
@@ -1923,20 +1946,7 @@ function importAllIntelToFeed() {
 function renderIntelAlerts() {
   const comps = DB.get(userKey('competitors'), []);
   const setup = getIntelSetup();
-  let html = `
-    <div class="intel-notice" style="background:#fffbeb;border-color:#fbbf24">
-      <span style="font-size:26px;flex-shrink:0">📋</span>
-      <div>
-        <div style="font-weight:700;color:#92400e;margin-bottom:5px">Google Alerts 設定步驟（每人只需設定一次）</div>
-        <ol style="color:#78350f">
-          <li>前往 <a href="https://www.google.com/alerts" target="_blank">google.com/alerts</a>，以您的 Google 帳號登入</li>
-          <li>建立警報關鍵字，例如：<code style="background:#fef9c3;padding:0 4px;border-radius:3px">「元大證券」開戶</code>、<code style="background:#fef9c3;padding:0 4px;border-radius:3px">「口袋證券」優惠</code></li>
-          <li>在警報管理頁面，點擊警報右側 <strong>RSS 圖示（橘色）</strong>，複製 RSS 網址</li>
-          <li>將 RSS 網址貼入下方對應券商欄位，點擊「抓取」即可取得真實新聞</li>
-        </ol>
-      </div>
-    </div>`;
-
+  let html = '';
   if (!comps.length) {
     html += '<div class="empty-state"><div class="empty-icon">🏢</div><p>請先前往「監控對手設定」新增要監控的券商</p></div>';
     document.getElementById('intelAlertsContent').innerHTML = html;
@@ -1946,24 +1956,20 @@ function renderIntelAlerts() {
   comps.forEach(c => {
     const rssUrl = (setup[c.id] && setup[c.id].alertsRss) || '';
     const cached  = DB.get(userKey('intel_alerts_'+c.id), []);
-    const suggestKw = `${c.name}+開戶`;
-    const alertLink = `https://www.google.com/alerts#${encodeURIComponent('"'+c.name+'" 開戶')}`;
     html += `
     <div class="card" style="margin-bottom:14px">
-      <div class="card-title" style="margin-bottom:10px">📰 ${c.name}
-        <a href="${alertLink}" target="_blank" style="font-size:11px;font-weight:400;color:var(--primary-light);text-decoration:none;margin-left:8px">＋ 前往建立警報</a>
-      </div>
-      <div class="intel-setup-row">
-        <input type="text" id="alerts_rss_${c.id}" value="${rssUrl}"
-          placeholder="貼入 Google Alerts RSS 網址（https://www.google.com/alerts/feeds/…）"
-          onchange="saveAlertRss('${c.id}',this.value)"
-          ${isAdmin() ? '' : 'readonly style="background:#f5f5f5;color:#999;cursor:not-allowed"'} />
-        <button class="btn btn-outline" onclick="fetchAlertsRSS('${c.id}')">抓取</button>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div class="card-title" style="margin:0">📰 ${c.name}
+          ${rssUrl
+            ? `<span style="font-size:11px;font-weight:400;color:#1a7a40;margin-left:8px">✅ RSS 已設定</span>`
+            : `<span style="font-size:11px;font-weight:400;color:#e07b00;margin-left:8px">⚠️ 尚未設定 RSS — 請至「⚙️ 情報來源設定」填入</span>`}
+        </div>
+        ${rssUrl ? `<button class="btn btn-outline" onclick="fetchAlertsRSS('${c.id}')">🔄 抓取</button>` : ''}
       </div>
       <div id="alerts_result_${c.id}">
         ${cached.length
           ? cached.slice(0,5).map(r => renderIntelItem(r, c, 'alerts')).join('')
-          : `<div style="color:var(--text-muted);font-size:13px;padding:6px 0">尚未抓取。請設定 RSS 網址後按「抓取」，或 <a href="${alertLink}" target="_blank" style="color:var(--primary-light)">前往 Google Alerts 建立警報</a>。</div>`}
+          : `<div style="color:var(--text-muted);font-size:13px;padding:6px 0">${rssUrl ? '尚未抓取，請按「抓取」按鈕' : '請先至「⚙️ 情報來源設定」填入 RSS 網址'}</div>`}
       </div>
     </div>`;
   });
@@ -2047,23 +2053,20 @@ function renderIntelYoutube() {
   comps.forEach(c => {
     const ytId  = (setup[c.id] && setup[c.id].ytChannelId) || '';
     const cached = DB.get(userKey('intel_yt_'+c.id), []);
-    const presetYt = c.yt || '';
     html += `
     <div class="card" style="margin-bottom:14px">
-      <div class="card-title" style="margin-bottom:10px">▶️ ${c.name}
-        ${presetYt ? `<a href="${presetYt}" target="_blank" style="font-size:11px;font-weight:400;color:var(--primary-light);text-decoration:none;margin-left:8px">🔗 開啟官方頻道</a>` : ''}
-      </div>
-      <div class="intel-setup-row">
-        <input type="text" id="yt_id_${c.id}" value="${ytId}"
-          placeholder="輸入頻道 ID（UCxxxxx…）或 @頻道名稱"
-          onchange="saveYtChannelId('${c.id}',this.value)"
-          ${isAdmin() ? '' : 'readonly style="background:#f5f5f5;color:#999;cursor:not-allowed"'} />
-        <button class="btn btn-outline" onclick="fetchYoutubeRSS('${c.id}')">抓取</button>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div class="card-title" style="margin:0">▶️ ${c.name}
+          ${ytId
+            ? `<span style="font-size:11px;font-weight:400;color:#1a7a40;margin-left:8px">✅ 頻道 ID 已設定</span>`
+            : `<span style="font-size:11px;font-weight:400;color:#e07b00;margin-left:8px">⚠️ 尚未設定頻道 ID — 請至「⚙️ 情報來源設定」填入</span>`}
+        </div>
+        ${ytId ? `<button class="btn btn-outline" onclick="fetchYoutubeRSS('${c.id}')">🔄 抓取</button>` : ''}
       </div>
       <div id="yt_result_${c.id}">
         ${cached.length
           ? cached.slice(0,5).map(r => renderIntelItem(r, c, 'youtube')).join('')
-          : '<div style="color:var(--text-muted);font-size:13px;padding:6px 0">尚未抓取，請設定頻道 ID 後按「抓取」。</div>'}
+          : `<div style="color:var(--text-muted);font-size:13px;padding:6px 0">${ytId ? '尚未抓取，請按「抓取」按鈕' : '請先至「⚙️ 情報來源設定」填入 YouTube 頻道 ID'}</div>`}
       </div>
     </div>`;
   });
@@ -2337,6 +2340,181 @@ function exportAdkwPDF() {
 }
 
 // ══════════════════════════════════════════
+//  ⚙️ 情報來源設定 Tab
+// ══════════════════════════════════════════
+
+function isSetupLocked() {
+  return DB.get('intel_setup_locked', false);
+}
+
+function renderIntelSetupTab() {
+  const el = document.getElementById('intelSetupContent');
+  if (!el) return;
+  const comps = DB.get(userKey('competitors'), []);
+
+  if (!comps.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🏢</div>
+      <p>請先前往「監控對手設定」新增要監控的競品券商，再回來設定情報來源。</p></div>`;
+    return;
+  }
+
+  if (isSetupLocked()) {
+    renderSetupLockedView(el, comps);
+  } else {
+    renderSetupEditForm(el, comps);
+  }
+}
+
+function renderSetupLockedView(el, comps) {
+  const setup = getIntelSetup();
+  const allConfigured = comps.every(c =>
+    setup[c.id]?.alertsRss && setup[c.id]?.ytChannelId && setup[c.id]?.websiteUrl
+  );
+
+  const rows = comps.map(c => {
+    const s = setup[c.id] || {};
+    const ok = v => v
+      ? `<span class="setup-status-ok">✅ 已設定</span>`
+      : `<span class="setup-status-none">— 未設定</span>`;
+    return `<tr>
+      <td>
+        <span style="display:inline-flex;width:28px;height:28px;background:var(--primary);color:#fff;border-radius:50%;align-items:center;justify-content:center;font-weight:700;font-size:12px;margin-right:6px">${c.name[0]}</span>
+        ${c.name}
+      </td>
+      <td>${ok(s.alertsRss)}${s.alertsRss ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px;word-break:break-all">${s.alertsRss.slice(0,60)}…</div>` : ''}</td>
+      <td>${ok(s.ytChannelId)}${s.ytChannelId ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px">${s.ytChannelId}</div>` : ''}</td>
+      <td>${ok(s.websiteUrl)}${s.websiteUrl ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px;word-break:break-all">${s.websiteUrl.slice(0,50)}…</div>` : ''}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="setup-locked-banner">
+      <div>
+        <div style="font-weight:700;color:#1a7a40;font-size:15px">
+          ${allConfigured ? '✅ 所有競品情報來源已完成設定' : '⚠️ 情報來源設定已儲存（部分欄位未填）'}
+        </div>
+        <div style="font-size:12px;color:#555;margin-top:3px">設定由管理員維護，一般使用者將自動套用此設定進行情報抓取</div>
+      </div>
+      <button onclick="unlockIntelSetup()"
+        style="background:#fff;border:1.5px solid #1a7a40;color:#1a7a40;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer">
+        ✏️ 修改設定
+      </button>
+    </div>
+
+    <table class="intel-setup-table">
+      <thead><tr>
+        <th style="width:140px">競品券商</th>
+        <th>📰 Google Alerts RSS</th>
+        <th>▶️ YouTube 頻道 ID</th>
+        <th>🌐 官網活動頁網址</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    <div style="margin-top:14px;padding:10px 14px;background:#f0f4f9;border-radius:8px;font-size:12px;color:var(--text-muted)">
+      💡 切換上方其他分頁可查看各情報來源的抓取結果與歷史記錄
+    </div>`;
+}
+
+function renderSetupEditForm(el, comps) {
+  const setup = getIntelSetup();
+
+  const compForms = comps.map(c => {
+    const s = setup[c.id] || {};
+    return `
+    <div class="setup-edit-form">
+      <div class="setup-comp-header">
+        <span style="display:inline-flex;width:32px;height:32px;background:var(--primary);color:#fff;border-radius:50%;align-items:center;justify-content:center;font-weight:700;font-size:14px">${c.name[0]}</span>
+        ${c.name}
+      </div>
+
+      <div class="setup-field-row">
+        <label>📰 Google Alerts RSS</label>
+        <input type="url" id="setup_rss_${c.id}" value="${s.alertsRss||''}"
+          placeholder="https://www.google.com/alerts/feeds/…">
+      </div>
+      <div style="grid-column:2;font-size:11px;color:var(--text-muted);margin:-6px 0 8px 150px">
+        前往 <a href="https://www.google.com/alerts" target="_blank" style="color:var(--primary-light)">Google Alerts</a>
+        建立「${c.name} 開戶」警報後，複製 RSS 圖示的網址貼入
+      </div>
+
+      <div class="setup-field-row">
+        <label>▶️ YouTube 頻道 ID</label>
+        <input type="text" id="setup_yt_${c.id}" value="${s.ytChannelId||''}"
+          placeholder="UCxxxxxxxxxxxxxxxxxxxxxxxxx（UC 開頭，24碼）">
+      </div>
+
+      <div class="setup-field-row">
+        <label>🌐 官網活動頁</label>
+        <input type="url" id="setup_web_${c.id}" value="${s.websiteUrl||''}"
+          placeholder="https://www.競品官網.com.tw/活動頁面">
+      </div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="intel-notice" style="background:#fff8e1;border-color:#fbbf24;margin-bottom:16px">
+      <span style="font-size:22px">⚙️</span>
+      <div>
+        <div style="font-weight:700;color:#92400e;margin-bottom:4px">編輯模式 — 管理員專用</div>
+        <div style="font-size:13px;color:#78350f">
+          填寫各競品的情報來源後，點「💾 儲存並鎖定」，設定將同步至雲端供所有使用者套用。<br>
+          日後需修改時，點「✏️ 修改設定」可重新開啟編輯。
+        </div>
+      </div>
+    </div>
+
+    <div class="setup-action-bar">
+      <button onclick="saveIntelSetupAll()"
+        style="background:var(--success);color:#fff;border:none;border-radius:8px;padding:10px 22px;font-size:14px;font-weight:700;cursor:pointer">
+        💾 儲存並鎖定
+      </button>
+      <button onclick="resetIntelSetup()"
+        style="background:#fff;border:1.5px solid var(--danger);color:var(--danger);border-radius:8px;padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer">
+        🔄 重設全部
+      </button>
+      <span style="font-size:12px;color:var(--text-muted)">（重設將清除所有競品的情報來源設定）</span>
+    </div>
+
+    ${compForms}
+
+    <div class="setup-action-bar" style="margin-top:4px">
+      <button onclick="saveIntelSetupAll()"
+        style="background:var(--success);color:#fff;border:none;border-radius:8px;padding:10px 22px;font-size:14px;font-weight:700;cursor:pointer">
+        💾 儲存並鎖定
+      </button>
+    </div>`;
+}
+
+function saveIntelSetupAll() {
+  const comps = DB.get(userKey('competitors'), []);
+  const setup = getIntelSetup();
+  comps.forEach(c => {
+    if (!setup[c.id]) setup[c.id] = {};
+    setup[c.id].alertsRss   = document.getElementById('setup_rss_' + c.id)?.value.trim() || '';
+    setup[c.id].ytChannelId = document.getElementById('setup_yt_'  + c.id)?.value.trim() || '';
+    setup[c.id].websiteUrl  = document.getElementById('setup_web_' + c.id)?.value.trim() || '';
+  });
+  saveIntelSetup(setup);
+  DB.set('intel_setup_locked', true);
+  showToast('✅ 情報來源設定已儲存並鎖定，同步至雲端', 'success');
+  renderIntelSetupTab();
+}
+
+function unlockIntelSetup() {
+  DB.set('intel_setup_locked', false);
+  renderIntelSetupTab();
+}
+
+function resetIntelSetup() {
+  if (!confirm('確定要重設所有競品的情報來源設定？此操作無法復原。')) return;
+  saveIntelSetup({});
+  DB.set('intel_setup_locked', false);
+  showToast('🔄 已重設所有情報來源設定', 'success');
+  renderIntelSetupTab();
+}
+
+// ══════════════════════════════════════════
 
 function renderIntelBanner() {
   const comps = DB.get(userKey('competitors'), []);
@@ -2368,18 +2546,17 @@ function renderIntelBanner() {
     const cached  = DB.get(userKey('intel_banner_' + c.id), []);
     html += `
     <div class="card" style="margin-bottom:14px">
-      <div class="card-title" style="margin-bottom:10px">🌐 ${c.name}</div>
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
-        <input type="url" id="banner_url_${c.id}"
-          value="${siteUrl}"
-          placeholder="例：https://www.yuanta.com.tw/Pages/Activity/Activity.aspx"
-          onchange="saveWebsiteUrl('${c.id}', this.value)"
-          ${isAdmin() ? '' : 'readonly'}
-          style="flex:1;min-width:240px;padding:8px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;${isAdmin() ? '' : 'background:#f5f5f5;color:#999;cursor:not-allowed'}">
-        <button class="btn btn-primary" id="bannerBtn_${c.id}" onclick="fetchBanners('${c.id}')">🔍 抓取 Banner</button>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div class="card-title" style="margin:0">🌐 ${c.name}
+          ${siteUrl
+            ? `<span style="font-size:11px;font-weight:400;color:#1a7a40;margin-left:8px">✅ 已設定</span>
+               <a href="${siteUrl}" target="_blank" style="font-size:11px;font-weight:400;color:var(--primary-light);margin-left:6px">🔗 查看網址</a>`
+            : `<span style="font-size:11px;font-weight:400;color:#e07b00;margin-left:8px">⚠️ 尚未設定 — 請至「⚙️ 情報來源設定」填入</span>`}
+        </div>
+        ${siteUrl ? `<button class="btn btn-primary" id="bannerBtn_${c.id}" onclick="fetchBanners('${c.id}')">🔍 抓取 Banner</button>` : ''}
       </div>
       <div id="banner_result_${c.id}">
-        ${cached.length ? renderBannerCacheHtml(c.id, cached) : '<div style="color:var(--text-muted);font-size:13px">尚未抓取，請輸入官網網址後點擊「抓取 Banner」</div>'}
+        ${cached.length ? renderBannerCacheHtml(c.id, cached) : `<div style="color:var(--text-muted);font-size:13px">${siteUrl ? '尚未抓取，請按「抓取 Banner」' : '請先至「⚙️ 情報來源設定」填入官網活動頁網址'}</div>`}
       </div>
     </div>`;
   });
