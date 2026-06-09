@@ -924,7 +924,9 @@ const FIREBASE_CONFIG = {
 let cloudDB = null;
 let cloudListener = null;
 const SYNC_FIELDS = ['competitors','activities','channels'];
-const SHARED_INTEL_DOC = 'shared_intel_config'; // 共用 Firebase 文件 ID（不綁定使用者）
+const SHARED_INTEL_DOC = 'shared_intel_config'; // 共用情報來源設定 Firebase 文件
+const SHARED_FEED_DOC  = 'shared_intel_feed';   // 共用情報快取 Firebase 文件（管理員每日自動抓取）
+let _mergedCompsCache = []; // getAllUsersCompetitors() 的快取，供 fetch 函式查 comp 名稱用
 try {
   if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
   cloudDB = firebase.firestore();
@@ -1137,6 +1139,13 @@ async function bootApp() {
 
   // ①-b 載入共用情報設定（管理員或一般使用者皆會讀取，但只有管理員能修改）
   await loadSharedIntelSetup();
+
+  // ①-c 管理員：檢查每日自動情報抓取；一般使用者：從共用情報庫同步動態
+  if (isAdmin()) {
+    checkAutoFetch(); // 非阻塞，延遲 2 秒在背景執行
+  } else {
+    await loadSharedFeedAndSync(); // 阻塞等待，確保登入後即時動態已有最新資料
+  }
 
   // ② 若雲端也沒有，才初始化空資料
   if (!DB.get(userKey('competitors'),  null)) DB.set(userKey('competitors'), []);
@@ -1943,13 +1952,15 @@ function importAllIntelToFeed() {
 }
 
 // ── Google Alerts 標籤 ──
-function renderIntelAlerts() {
-  const comps = DB.get(userKey('competitors'), []);
+async function renderIntelAlerts() {
+  const el = document.getElementById('intelAlertsContent');
+  el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px">⏳ 載入競品清單…</div>';
+  const comps = await getAllUsersCompetitors();
   const setup = getIntelSetup();
   let html = '';
   if (!comps.length) {
-    html += '<div class="empty-state"><div class="empty-icon">🏢</div><p>請先前往「監控對手設定」新增要監控的券商</p></div>';
-    document.getElementById('intelAlertsContent').innerHTML = html;
+    html += '<div class="empty-state"><div class="empty-icon">🏢</div><p>系統中尚無任何競品，請先由使用者前往「監控對手設定」新增</p></div>';
+    el.innerHTML = html;
     return;
   }
 
@@ -1978,8 +1989,10 @@ function renderIntelAlerts() {
 }
 
 // ── Meta 廣告庫標籤 ──
-function renderIntelMeta() {
-  const comps = DB.get(userKey('competitors'), []);
+async function renderIntelMeta() {
+  document.getElementById('intelMetaContent').innerHTML =
+    '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px">⏳ 載入競品清單…</div>';
+  const comps = await getAllUsersCompetitors();
   let html = `
     <div class="intel-notice" style="background:#e8f4ff;border-color:#93c5fd">
       <span style="font-size:26px;flex-shrink:0">📘</span>
@@ -2027,8 +2040,10 @@ function renderIntelMeta() {
 }
 
 // ── YouTube 標籤 ──
-function renderIntelYoutube() {
-  const comps = DB.get(userKey('competitors'), []);
+async function renderIntelYoutube() {
+  document.getElementById('intelYoutubeContent').innerHTML =
+    '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px">⏳ 載入競品清單…</div>';
+  const comps = await getAllUsersCompetitors();
   const setup = getIntelSetup();
   let html = `
     <div class="intel-notice" style="background:#fff2f2;border-color:#fca5a5">
@@ -2396,7 +2411,162 @@ async function getAllUsersCompetitors() {
     }
   }
 
-  return Array.from(merged.values());
+  const result = Array.from(merged.values());
+  _mergedCompsCache = result; // 快取供 fetchAlertsRSS / fetchYoutubeRSS 查詢 comp 名稱
+  return result;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  共用情報庫 — 管理員每日自動抓取 + 一般使用者同步
+// ═══════════════════════════════════════════════════════════
+
+// 儲存已抓取的情報到 Firebase 共用文件
+async function saveSharedFeed(items) {
+  if (!cloudDB) return;
+  try {
+    await cloudDB.collection('cm_monitor').doc(SHARED_FEED_DOC).set({
+      items: items.slice(0, 600), // 最多 600 筆，避免超過 Firestore 文件大小
+      lastFetchAt: Date.now(),
+      updatedBy: currentUser?.displayName || 'admin'
+    }); // 完整覆寫（非 merge），確保舊資料不殘留
+  } catch(e) { console.warn('saveSharedFeed failed:', e); }
+}
+
+// 管理員登入時：檢查是否已超過 24 小時未抓取，若是則自動執行
+async function checkAutoFetch() {
+  if (!isAdmin() || !cloudDB) return;
+  try {
+    const doc = await cloudDB.collection('cm_monitor').doc(SHARED_FEED_DOC).get();
+    const lastFetch = doc.exists ? doc.data().lastFetchAt : null;
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    if (!lastFetch || (Date.now() - lastFetch) > oneDayMs) {
+      // 延遲 2 秒後在背景執行，不阻塞頁面載入
+      setTimeout(() => autoFetchAllForSharedFeed(), 2000);
+    } else {
+      const hours = Math.round((Date.now() - lastFetch) / 3600000);
+      console.log(`[情報庫] 上次抓取於 ${hours} 小時前，尚在 24 小時內，跳過自動抓取`);
+    }
+  } catch(e) { console.warn('checkAutoFetch failed:', e); }
+}
+
+// 管理員：一鍵抓取所有競品的情報並儲存到共用 Firebase 文件
+async function autoFetchAllForSharedFeed() {
+  showToast('🤖 每日自動情報抓取啟動中，完成後將同步給所有使用者…', '');
+  const comps = await getAllUsersCompetitors();
+  const setup = getIntelSetup();
+  if (!comps.length) { showToast('⚠️ 尚無任何競品，跳過自動抓取', ''); return; }
+
+  const allItems = [];
+
+  // ── 抓取 Google Alerts RSS ──
+  for (const c of comps) {
+    const rssUrl = setup[c.id]?.alertsRss;
+    if (!rssUrl) continue;
+    try {
+      const text = await fetchViaProxy(rssUrl);
+      if (!text.includes('<')) continue;
+      const xmlDoc = new DOMParser().parseFromString(text, 'application/xml');
+      const nodes  = Array.from(xmlDoc.querySelectorAll('entry, item'));
+      const parsed = nodes.slice(0, 10).map(node => {
+        const rawTitle = node.querySelector('title')?.textContent || '';
+        const title    = rawTitle.replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').trim().substring(0,120);
+        const link     = (node.querySelector('link')?.getAttribute('href') || node.querySelector('link')?.textContent || '').trim();
+        const pubRaw   = node.querySelector('published,pubDate,updated')?.textContent || '';
+        const desc     = (node.querySelector('summary,description,content')?.textContent || '').replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').trim().substring(0,200);
+        const d = pubRaw ? new Date(pubRaw).toISOString().split('T')[0] : today();
+        return title ? { compId:c.id, compName:c.name, channel:'官網', type:'媒體報導', title, desc, url:link, date:d, source:'Google Alerts' } : null;
+      }).filter(Boolean);
+      parsed.forEach(i => allItems.push(i));
+      // 同步存入管理員本機快取（讓情報工具箱標籤也能顯示）
+      DB.set(userKey('intel_alerts_'+c.id), parsed.map(i => ({
+        id:'ia'+Date.now()+Math.random().toString(36).slice(2,5), ...i
+      })));
+    } catch(e) { console.warn('[自動抓取] Google Alerts 失敗:', c.name, e.message); }
+  }
+
+  // ── 抓取 YouTube RSS ──
+  for (const c of comps) {
+    const ytId = (setup[c.id]?.ytChannelId || '').trim();
+    if (!ytId) continue;
+    try {
+      const rssUrl = ytId.startsWith('UC')
+        ? 'https://www.youtube.com/feeds/videos.xml?channel_id=' + ytId
+        : 'https://www.youtube.com/feeds/videos.xml?user=' + ytId.replace(/^@/,'');
+      const text   = await fetchViaProxy(rssUrl);
+      if (!text.includes('<entry')) continue;
+      const xmlDoc   = new DOMParser().parseFromString(text, 'text/xml');
+      const entries  = Array.from(xmlDoc.querySelectorAll('entry'));
+      const parsed   = entries.slice(0, 10).map(entry => {
+        const title     = (entry.querySelector('title')?.textContent || '').trim().substring(0,120);
+        const link      = (entry.querySelector('link')?.getAttribute('href') || '').trim();
+        const published = entry.querySelector('published')?.textContent || '';
+        const desc      = (entry.querySelector('media\\:description, description')?.textContent || '').trim().substring(0,150);
+        const d = published ? new Date(published).toISOString().split('T')[0] : today();
+        return title ? { compId:c.id, compName:c.name, channel:'YouTube', type:'KOL合作', title, desc, url:link, date:d, source:'YouTube' } : null;
+      }).filter(Boolean);
+      parsed.forEach(i => allItems.push(i));
+      DB.set(userKey('intel_yt_'+c.id), parsed.map(i => ({
+        id:'iy'+Date.now()+Math.random().toString(36).slice(2,5), ...i
+      })));
+    } catch(e) { console.warn('[自動抓取] YouTube 失敗:', c.name, e.message); }
+  }
+
+  if (allItems.length) {
+    await saveSharedFeed(allItems);
+    showToast(`✅ 自動抓取完成：${allItems.length} 筆情報已儲存雲端，一般使用者下次登入將自動同步`, 'success');
+  } else {
+    // 仍更新 lastFetchAt，避免每次登入都重試
+    if (cloudDB) cloudDB.collection('cm_monitor').doc(SHARED_FEED_DOC).set({ items:[], lastFetchAt: Date.now(), updatedBy: currentUser?.displayName||'admin' }).catch(()=>{});
+    showToast('⚠️ 自動抓取完成，但未獲取到資料（請確認情報來源設定中的 RSS 網址是否正確）', '');
+  }
+}
+
+// 一般使用者登入時：從共用情報庫篩選出自己監控的競品動態並合併到即時動態
+async function loadSharedFeedAndSync() {
+  if (isAdmin() || !cloudDB) return; // 管理員不需要，由自身抓取
+  try {
+    const doc = await cloudDB.collection('cm_monitor').doc(SHARED_FEED_DOC).get();
+    if (!doc.exists) return;
+    const items = doc.data().items || [];
+    if (!items.length) return;
+
+    const myComps = DB.get(userKey('competitors'), []);
+    if (!myComps.length) return;
+
+    // 以競品名稱做比對（不同使用者對同一家券商的 id 可能不同）
+    const myCompNames = new Set(myComps.map(c => c.name));
+    const nameToComp  = Object.fromEntries(myComps.map(c => [c.name, c]));
+    const relevant    = items.filter(item => myCompNames.has(item.compName));
+    if (!relevant.length) return;
+
+    const activities   = DB.get(userKey('activities'), []);
+    const existingUrls = new Set(activities.filter(a => a.url).map(a => a.url));
+    let added = 0;
+
+    relevant.forEach(item => {
+      if (item.url && existingUrls.has(item.url)) return; // 去重
+      const comp = nameToComp[item.compName];
+      if (!comp) return;
+      activities.unshift({
+        id: 'a' + Date.now() + Math.random().toString(36).slice(2,5),
+        compId: comp.id,
+        channel: item.channel || '官網',
+        type:    item.type    || '媒體報導',
+        title:   item.title,
+        desc:    item.desc || '',
+        date:    item.date || today(),
+        url:     item.url  || '',
+        addedBy: item.source + ' 自動匯入'
+      });
+      if (item.url) existingUrls.add(item.url);
+      added++;
+    });
+
+    if (added > 0) {
+      saveData('activities', activities);
+      showToast(`✅ 已從管理員情報庫同步 ${added} 筆最新競品動態`, 'success');
+    }
+  } catch(e) { console.warn('loadSharedFeedAndSync failed:', e); }
 }
 
 function renderSetupLockedView(el, comps) {
@@ -2846,7 +3016,7 @@ async function fetchAlertsRSS(compId) {
     }).filter(i => i.title);
     if (!items.length) throw new Error('parsed_but_no_title');
     DB.set(userKey('intel_alerts_'+compId), items);
-    const comp = DB.get(userKey('competitors'),[]).find(c=>c.id===compId);
+    const comp = _mergedCompsCache.find(c=>c.id===compId) || DB.get(userKey('competitors'),[]).find(c=>c.id===compId);
     el.innerHTML = items.slice(0,5).map(r => renderIntelItem(r, comp, 'alerts')).join('');
     showToast('✅ 已抓取 '+items.length+' 則 '+comp?.name+' 的 Google 新聞', 'success');
   } catch(e) {
@@ -2903,7 +3073,7 @@ async function fetchYoutubeRSS(compId) {
     }).filter(i => i.title);
     if (!items.length) throw new Error('parsed_but_empty');
     DB.set(userKey('intel_yt_'+compId), items);
-    const comp = DB.get(userKey('competitors'),[]).find(c=>c.id===compId);
+    const comp = _mergedCompsCache.find(c=>c.id===compId) || DB.get(userKey('competitors'),[]).find(c=>c.id===compId);
     el.innerHTML = items.slice(0,5).map(r => renderIntelItem(r, comp, 'youtube')).join('');
     showToast('✅ 已抓取 '+items.length+' 支 '+comp?.name+' 的最新影片', 'success');
   } catch(e) {
