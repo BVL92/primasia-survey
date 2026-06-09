@@ -2347,14 +2347,19 @@ function isSetupLocked() {
   return DB.get('intel_setup_locked', false);
 }
 
-function renderIntelSetupTab() {
+async function renderIntelSetupTab() {
   const el = document.getElementById('intelSetupContent');
   if (!el) return;
-  const comps = DB.get(userKey('competitors'), []);
+
+  // 載入中提示
+  el.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:13px">⏳ 正在載入所有使用者的競品清單…</div>`;
+
+  // 從所有使用者帳號的 Firebase 文件中合併競品清單
+  const comps = await getAllUsersCompetitors();
 
   if (!comps.length) {
     el.innerHTML = `<div class="empty-state"><div class="empty-icon">🏢</div>
-      <p>請先前往「監控對手設定」新增要監控的競品券商，再回來設定情報來源。</p></div>`;
+      <p>目前系統中尚無任何使用者設定競品，請先由使用者前往「監控對手設定」新增競品券商。</p></div>`;
     return;
   }
 
@@ -2363,6 +2368,35 @@ function renderIntelSetupTab() {
   } else {
     renderSetupEditForm(el, comps);
   }
+}
+
+// 從 Firebase 合併所有使用者的競品清單（去重，以 name 為唯一鍵）
+async function getAllUsersCompetitors() {
+  // 先取自己帳號的競品（確保本機資料也納入）
+  const myComps = DB.get(userKey('competitors'), []);
+  const merged = new Map(); // name → comp object
+  myComps.forEach(c => { if (c.name) merged.set(c.name, c); });
+
+  if (cloudDB) {
+    try {
+      // 讀取 cm_monitor 集合下所有文件（管理員帳號有讀取權限）
+      const snapshot = await cloudDB.collection('cm_monitor').get();
+      snapshot.docs.forEach(doc => {
+        // 跳過共用設定文件
+        if (doc.id === SHARED_INTEL_DOC) return;
+        const data = doc.data();
+        if (Array.isArray(data.competitors)) {
+          data.competitors.forEach(c => {
+            if (c.name && !merged.has(c.name)) merged.set(c.name, c);
+          });
+        }
+      });
+    } catch(e) {
+      console.warn('讀取所有使用者競品失敗，僅顯示本帳號競品:', e);
+    }
+  }
+
+  return Array.from(merged.values());
 }
 
 function renderSetupLockedView(el, comps) {
@@ -2486,8 +2520,9 @@ function renderSetupEditForm(el, comps) {
     </div>`;
 }
 
-function saveIntelSetupAll() {
-  const comps = DB.get(userKey('competitors'), []);
+async function saveIntelSetupAll() {
+  // 使用與 renderIntelSetupTab 相同的完整競品清單來讀取表單欄位
+  const comps = await getAllUsersCompetitors();
   const setup = getIntelSetup();
   comps.forEach(c => {
     if (!setup[c.id]) setup[c.id] = {};
