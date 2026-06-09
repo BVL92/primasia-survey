@@ -2631,11 +2631,18 @@ function renderSetupEditForm(el, comps) {
 
   const compForms = comps.map(c => {
     const s = setup[c.id] || {};
+    const hasAny = s.alertsRss || s.ytChannelId || s.websiteUrl;
     return `
     <div class="setup-edit-form">
-      <div class="setup-comp-header">
-        <span style="display:inline-flex;width:32px;height:32px;background:var(--primary);color:#fff;border-radius:50%;align-items:center;justify-content:center;font-weight:700;font-size:14px">${c.name[0]}</span>
-        ${c.name}
+      <div class="setup-comp-header" style="display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="display:inline-flex;width:32px;height:32px;background:var(--primary);color:#fff;border-radius:50%;align-items:center;justify-content:center;font-weight:700;font-size:14px">${c.name[0]}</span>
+          ${c.name}
+        </div>
+        ${hasAny ? `<button onclick="resetSingleComp('${c.id}','${c.name}')"
+          style="background:#fff;border:1px solid var(--danger);color:var(--danger);border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">
+          🔄 重設此券商
+        </button>` : `<span style="font-size:11px;color:var(--text-muted)">— 尚未設定</span>`}
       </div>
 
       <div class="setup-field-row">
@@ -2722,6 +2729,24 @@ function resetIntelSetup() {
   saveIntelSetup({});
   DB.set('intel_setup_locked', false);
   showToast('🔄 已重設所有情報來源設定', 'success');
+  renderIntelSetupTab();
+}
+
+// 重設單一券商的情報來源設定
+function resetSingleComp(compId, compName) {
+  if (!confirm(`確定要清除「${compName}」的所有情報來源設定？`)) return;
+  const setup = getIntelSetup();
+  delete setup[compId];
+  saveIntelSetup(setup);
+  // 清空頁面上的輸入欄位（不重新 render，體驗更流暢）
+  const rssEl = document.getElementById('setup_rss_'  + compId);
+  const ytEl  = document.getElementById('setup_yt_'   + compId);
+  const webEl = document.getElementById('setup_web_'  + compId);
+  if (rssEl) rssEl.value = '';
+  if (ytEl)  ytEl.value  = '';
+  if (webEl) webEl.value = '';
+  showToast(`🔄 已清除「${compName}」的情報來源設定`, 'success');
+  // 更新該券商標頭的按鈕狀態（改為「尚未設定」文字）
   renderIntelSetupTab();
 }
 
