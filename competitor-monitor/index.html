@@ -638,12 +638,14 @@
       </div>
       <!-- Tab Bar -->
       <div class="intel-tab-bar">
-        <button class="intel-tab active" data-tab="alerts" onclick="switchIntelTab('alerts')">📰 Google Alerts 新聞</button>
-        <button class="intel-tab" data-tab="meta" onclick="switchIntelTab('meta')">📢 Meta 廣告庫</button>
-        <button class="intel-tab" data-tab="youtube" onclick="switchIntelTab('youtube')">▶️ YouTube 頻道</button>
+        <button class="intel-tab active" data-tab="alerts"  onclick="switchIntelTab('alerts')">📰 Google Alerts 新聞</button>
+        <button class="intel-tab"        data-tab="banner"  onclick="switchIntelTab('banner')">🌐 官網活動 Banner</button>
+        <button class="intel-tab"        data-tab="meta"    onclick="switchIntelTab('meta')">📢 Meta 廣告庫</button>
+        <button class="intel-tab"        data-tab="youtube" onclick="switchIntelTab('youtube')">▶️ YouTube 頻道</button>
       </div>
-      <div id="intelAlertsContent" class="intel-tab-content"></div>
-      <div id="intelMetaContent"   class="intel-tab-content" style="display:none"></div>
+      <div id="intelAlertsContent"  class="intel-tab-content"></div>
+      <div id="intelBannerContent"  class="intel-tab-content" style="display:none"></div>
+      <div id="intelMetaContent"    class="intel-tab-content" style="display:none"></div>
       <div id="intelYoutubeContent" class="intel-tab-content" style="display:none"></div>
     </div>
 
@@ -2129,6 +2131,7 @@ function switchIntelTab(tab) {
     c.style.display = c.id === 'intel' + tab.charAt(0).toUpperCase() + tab.slice(1) + 'Content' ? 'block' : 'none';
   });
   if (tab === 'alerts')  renderIntelAlerts();
+  if (tab === 'banner')  renderIntelBanner();
   if (tab === 'meta')    renderIntelMeta();
   if (tab === 'youtube') renderIntelYoutube();
 }
@@ -2137,7 +2140,14 @@ async function fetchAllIntel() {
   const tab   = document.querySelector('.intel-tab.active')?.dataset?.tab || 'alerts';
   const comps = DB.get(userKey('competitors'), []);
   if (!comps.length) { showToast('請先設定監控對手', 'error'); return; }
-  if (tab === 'meta') { showToast('Meta 廣告庫為手動開啟，請點擊各券商的按鈕', ''); return; }
+  if (tab === 'meta')   { showToast('Meta 廣告庫為手動開啟，請點擊各券商的按鈕', ''); return; }
+  if (tab === 'banner') {
+    const configured = comps.filter(c => setup[c.id] && setup[c.id].websiteUrl);
+    if (!configured.length) { showToast('請先在「官網活動 Banner」分頁輸入各競品的官網網址', 'error'); return; }
+    showToast('⏳ 依序抓取 ' + configured.length + ' 家競品官網 Banner…');
+    for (const c of configured) { await fetchBanners(c.id); }
+    return;
+  }
 
   const setup = getIntelSetup();
   const configured = comps.filter(c => tab === 'alerts'
@@ -2399,6 +2409,241 @@ function saveYtChannelId(compId, value) {
   if (!setup[compId]) setup[compId] = {};
   setup[compId].ytChannelId = value.trim();
   saveIntelSetup(setup);
+}
+function saveWebsiteUrl(compId, value) {
+  const setup = getIntelSetup();
+  if (!setup[compId]) setup[compId] = {};
+  setup[compId].websiteUrl = value.trim();
+  saveIntelSetup(setup);
+}
+
+// ══════════════════════════════════════════
+//  🌐 官網 Banner 活動抓取模組
+// ══════════════════════════════════════════
+
+function renderIntelBanner() {
+  const comps = DB.get(userKey('competitors'), []);
+  const setup = getIntelSetup();
+  let html = `
+    <div class="intel-notice" style="background:#f0f9ff;border-color:#7dd3fc">
+      <span style="font-size:26px;flex-shrink:0">🌐</span>
+      <div>
+        <div style="font-weight:700;color:#075985;margin-bottom:5px">官網 Banner 活動自動解析</div>
+        <p style="color:#0c4a6e;font-size:13px;line-height:1.7">
+          輸入各競品的<strong>官網首頁或活動頁網址</strong>，系統會自動抓取頁面上的 Banner 連結，
+          再逐一解析各 Banner 目標頁面的活動內容（標題、說明、日期等），
+          讓您一鍵掌握競品現正進行的行銷活動。
+        </p>
+        <p style="color:#0369a1;font-size:12px;margin-top:4px">
+          ⚠️ 部分採用 JavaScript 動態載入的網站可能無法完整抓取，建議同時搭配 Google Alerts 使用。
+        </p>
+      </div>
+    </div>`;
+
+  if (!comps.length) {
+    html += '<div class="empty-state"><div class="empty-icon">🏢</div><p>請先前往「監控對手設定」新增要監控的券商</p></div>';
+    document.getElementById('intelBannerContent').innerHTML = html;
+    return;
+  }
+
+  comps.forEach(c => {
+    const siteUrl = (setup[c.id] && setup[c.id].websiteUrl) || '';
+    const cached  = DB.get(userKey('intel_banner_' + c.id), []);
+    html += `
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:10px">🌐 ${c.name}</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+        <input type="url" id="banner_url_${c.id}"
+          value="${siteUrl}"
+          placeholder="例：https://www.yuanta.com.tw/Pages/Activity/Activity.aspx"
+          onchange="saveWebsiteUrl('${c.id}', this.value)"
+          style="flex:1;min-width:240px;padding:8px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:13px">
+        <button class="btn btn-primary" id="bannerBtn_${c.id}" onclick="fetchBanners('${c.id}')">🔍 抓取 Banner</button>
+      </div>
+      <div id="banner_result_${c.id}">
+        ${cached.length ? renderBannerCacheHtml(c.id, cached) : '<div style="color:var(--text-muted);font-size:13px">尚未抓取，請輸入官網網址後點擊「抓取 Banner」</div>'}
+      </div>
+    </div>`;
+  });
+  document.getElementById('intelBannerContent').innerHTML = html;
+}
+
+function renderBannerCacheHtml(compId, items) {
+  if (!items.length) return '<div style="color:var(--text-muted);font-size:13px">未找到 Banner 活動連結</div>';
+  return `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">找到 ${items.length} 個 Banner 活動連結：</div>` +
+    items.map((item, i) => `
+    <div style="border:1.5px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;background:#fafcff">
+      <div style="display:flex;gap:10px;align-items:flex-start">
+        ${item.imgSrc ? `<img src="${item.imgSrc}" style="width:120px;height:60px;object-fit:cover;border-radius:5px;flex-shrink:0;border:1px solid var(--border)" onerror="this.style.display='none'">` : ''}
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:13px;margin-bottom:3px;color:var(--text)">${item.title || '（未取得標題）'}</div>
+          ${item.desc ? `<div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:4px">${item.desc}</div>` : ''}
+          <a href="${item.url}" target="_blank" style="font-size:11px;color:var(--primary-light)">🔗 ${item.url}</a>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0">
+          <button onclick="addBannerToFeed('${compId}', ${i})" style="background:var(--success);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;white-space:nowrap">📡 加入動態</button>
+          <button onclick="addBannerToCampaign('${compId}', ${i})" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;white-space:nowrap">🎯 加入活動</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+async function fetchBanners(compId) {
+  const setup = getIntelSetup();
+  const siteUrl = (setup[compId] && setup[compId].websiteUrl) ||
+                  document.getElementById('banner_url_'+compId)?.value?.trim() || '';
+  if (!siteUrl) { showToast('請先輸入官網網址', 'error'); return; }
+  if (!siteUrl.startsWith('http')) { showToast('網址格式錯誤，應以 https:// 開頭', 'error'); return; }
+
+  // 儲存輸入的網址
+  saveWebsiteUrl(compId, siteUrl);
+
+  const btn = document.getElementById('bannerBtn_'+compId);
+  const el  = document.getElementById('banner_result_'+compId);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 抓取中…'; }
+  if (el)  el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px 0">⏳ 正在抓取官網頁面，請稍候…</div>';
+
+  try {
+    // 第一步：抓取官網首頁 / 活動頁
+    const html = await fetchViaProxy(siteUrl);
+    const base = new URL(siteUrl);
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    // 收集 Banner 連結（<a> 含 <img> 的連結）
+    const promoKws = ['活動','優惠','promo','event','offer','campaign','開戶','好禮','bonus','ipo','etf','基金','申購'];
+    const seen = new Set();
+    const candidates = [];
+
+    // 策略1：<a><img></a>（圖片連結 Banner）
+    doc.querySelectorAll('a').forEach(a => {
+      if (!a.querySelector('img')) return;
+      const href = a.getAttribute('href') || '';
+      if (!href || href === '#' || href.startsWith('javascript') || href.startsWith('mailto')) return;
+      let fullUrl;
+      try { fullUrl = new URL(href, base).href; } catch { return; }
+      // 排除外部社群連結
+      if (/facebook|youtube|twitter|instagram|line\.me|linkedin/i.test(fullUrl)) return;
+      if (seen.has(fullUrl)) return;
+      seen.add(fullUrl);
+      const img = a.querySelector('img');
+      const imgSrc = (img.getAttribute('src') || img.getAttribute('data-src') || img.getAttribute('data-lazy') || '').trim();
+      let fullImg = '';
+      try { fullImg = imgSrc ? new URL(imgSrc, base).href : ''; } catch {}
+      candidates.push({ url: fullUrl, imgSrc: fullImg, alt: img.alt || '', linkText: a.textContent.trim() });
+    });
+
+    // 策略2：含促銷關鍵字的文字連結
+    doc.querySelectorAll('a[href]').forEach(a => {
+      const href = a.getAttribute('href') || '';
+      const text = a.textContent.trim();
+      if (!promoKws.some(kw => href.toLowerCase().includes(kw) || text.includes(kw))) return;
+      if (!href || href === '#' || href.startsWith('javascript')) return;
+      let fullUrl;
+      try { fullUrl = new URL(href, base).href; } catch { return; }
+      if (/facebook|youtube|twitter|instagram|line\.me/i.test(fullUrl)) return;
+      if (seen.has(fullUrl)) return;
+      seen.add(fullUrl);
+      candidates.push({ url: fullUrl, imgSrc: '', alt: text, linkText: text });
+    });
+
+    if (!candidates.length) {
+      if (el) el.innerHTML = `<div style="color:#92400e;background:#fffbeb;border:1px solid #fbbf24;border-radius:7px;padding:12px;font-size:13px">
+        <strong>⚠️ 未找到 Banner 連結</strong><br>
+        此頁面可能使用 JavaScript 動態載入 Banner（SPA 架構），Proxy 無法取得動態內容。<br><br>
+        <strong>建議：</strong>改輸入券商的「活動專區」靜態頁面網址，例如：<br>
+        <code style="background:#fef3c7;padding:2px 6px;border-radius:4px;font-size:12px">https://www.元大證券.com.tw/活動頁面</code>
+      </div>`;
+      return;
+    }
+
+    // 第二步：逐一抓取 Banner 目標頁，解析活動內容
+    if (el) el.innerHTML = `<div style="color:var(--text-muted);font-size:13px;padding:8px 0">⏳ 找到 ${candidates.length} 個候選連結，正在解析活動內容（0/${Math.min(candidates.length,8)}）…</div>`;
+
+    const results = [];
+    const limit = Math.min(candidates.length, 8); // 最多解析 8 個
+    for (let i = 0; i < limit; i++) {
+      const c = candidates[i];
+      if (el) el.innerHTML = `<div style="color:var(--text-muted);font-size:13px;padding:8px 0">⏳ 正在解析活動頁面 ${i+1}/${limit}：${c.url.slice(0,60)}…</div>`;
+      try {
+        const pageHtml = await fetchViaProxy(c.url);
+        const pdoc = parser.parseFromString(pageHtml, 'text/html');
+        // 移除雜訊元素
+        ['script','style','nav','footer','header','aside','noscript'].forEach(tag =>
+          pdoc.querySelectorAll(tag).forEach(el => el.remove())
+        );
+        // 取標題
+        const title = pdoc.querySelector('h1,h2,.title,.event-title,.activity-title')?.textContent?.trim()
+          || pdoc.querySelector('title')?.textContent?.trim()
+          || c.alt || c.linkText || '（未取得標題）';
+        // 取說明文字（前 200 字）
+        const main = pdoc.querySelector('main,article,.content,.main-content,#content,#main') || pdoc.body;
+        const rawText = (main?.innerText || main?.textContent || '').replace(/\s+/g,' ').trim();
+        const desc = rawText.slice(0, 200).replace(title, '').trim();
+        // 取日期（正則抓日期格式）
+        const dateMatch = rawText.match(/(\d{4}[\/\-年]\d{1,2}[\/\-月]\d{1,2})/);
+        results.push({
+          url: c.url,
+          imgSrc: c.imgSrc,
+          title: title.slice(0, 60),
+          desc: desc.slice(0, 180),
+          date: dateMatch ? dateMatch[1].replace(/[年月]/g,'/').replace(/日/,'') : today(),
+        });
+      } catch {
+        // 無法抓取子頁面，用 Banner 本身的文字
+        if (c.alt || c.linkText) {
+          results.push({ url: c.url, imgSrc: c.imgSrc, title: c.alt || c.linkText, desc: '', date: today() });
+        }
+      }
+    }
+
+    // 儲存快取
+    DB.set(userKey('intel_banner_'+compId), results);
+    if (el) el.innerHTML = renderBannerCacheHtml(compId, results);
+    showToast(`✅ ${DB.get(userKey('competitors'),[]).find(x=>x.id===compId)?.name || ''} 找到 ${results.length} 個活動`, 'success');
+  } catch(e) {
+    if (el) el.innerHTML = `<div style="color:var(--danger);background:#fff0f0;border:1px solid #fca5a5;border-radius:7px;padding:12px;font-size:13px">
+      <strong>❌ 抓取失敗</strong>：${e.message}<br>
+      請確認網址正確，或改用活動專區的直接連結。
+    </div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 抓取 Banner'; }
+  }
+}
+
+function addBannerToFeed(compId, idx) {
+  const items = DB.get(userKey('intel_banner_'+compId), []);
+  const item = items[idx]; if (!item) return;
+  const activities = DB.get(userKey('activities'), []);
+  const existingUrls = new Set(activities.filter(a=>a.url).map(a=>a.url));
+  if (item.url && existingUrls.has(item.url)) { showToast('此活動已在即時動態中', ''); return; }
+  activities.unshift({
+    id: 'a'+Date.now()+Math.random().toString(36).slice(2,5),
+    compId, channel:'官網', type:'促銷活動',
+    title: item.title, desc: item.desc||'',
+    date: item.date||today(), url: item.url||'',
+    addedBy: '官網 Banner 自動解析',
+  });
+  saveData('activities', activities);
+  showToast('✅ 已加入即時動態', 'success');
+}
+
+function addBannerToCampaign(compId, idx) {
+  const items = DB.get(userKey('intel_banner_'+compId), []);
+  const item  = items[idx]; if (!item) return;
+  const comps = DB.get(userKey('competitors'), []);
+  // 預填活動 Modal
+  document.getElementById('campaignModalTitle').textContent = '＋ 從 Banner 新增活動';
+  document.getElementById('cmpEditId').value = '';
+  document.getElementById('cmpName').value  = item.title || '';
+  document.getElementById('cmpDesc').value  = item.desc  || '';
+  document.getElementById('cmpUrl').value   = item.url   || '';
+  document.getElementById('cmpStartDate').value = item.date || today();
+  document.getElementById('cmpEndDate').value   = '';
+  document.getElementById('cmpType').value = '限時活動';
+  const sel = document.getElementById('cmpCompId');
+  sel.innerHTML = comps.map(c => `<option value="${c.id}" ${c.id===compId?'selected':''}>${c.name}</option>`).join('');
+  openModal('campaignModal');
 }
 
 // ── 抓取 Google Alerts RSS ──
