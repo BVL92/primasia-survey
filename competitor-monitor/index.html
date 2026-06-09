@@ -1176,6 +1176,12 @@ const viewMap = { dashboard:'viewDashboard', competitors:'viewCompetitors', feed
 const navMap  = { dashboard:0, competitors:1, feed:2, report:3, intelTools:4, adminUsers:5, adminLogs:6 };
 
 function showView(name) {
+  // 一般使用者無法進入管理員專屬頁面
+  const adminOnlyViews = ['intelTools', 'adminUsers', 'adminLogs'];
+  if (adminOnlyViews.includes(name) && !isAdmin()) {
+    showToast('此功能僅限管理員使用', 'error');
+    return;
+  }
   Object.values(viewMap).forEach(id => document.getElementById(id).classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   document.getElementById(viewMap[name]).classList.add('active');
@@ -2533,52 +2539,83 @@ async function autoFetchAllForSharedFeed() {
   }
 }
 
-// 一般使用者登入時：從共用情報庫篩選出自己監控的競品動態並合併到即時動態
+// 一般使用者：從共用情報庫篩選出自己監控的競品動態並合併到即時動態
 async function loadSharedFeedAndSync() {
-  if (isAdmin() || !cloudDB) return; // 管理員不需要，由自身抓取
-  try {
-    const doc = await cloudDB.collection('cm_monitor').doc(SHARED_FEED_DOC).get();
-    if (!doc.exists) return;
-    const items = doc.data().items || [];
-    if (!items.length) return;
+  if (isAdmin()) return; // 管理員不需要，由自身抓取
 
-    const myComps = DB.get(userKey('competitors'), []);
-    if (!myComps.length) return;
+  let items = [];
 
-    // 以競品名稱做比對（不同使用者對同一家券商的 id 可能不同）
-    const myCompNames = new Set(myComps.map(c => c.name));
-    const nameToComp  = Object.fromEntries(myComps.map(c => [c.name, c]));
-    const relevant    = items.filter(item => myCompNames.has(item.compName));
-    if (!relevant.length) return;
+  // ① 優先從 Firebase 共用情報文件讀取
+  if (cloudDB) {
+    try {
+      const doc = await cloudDB.collection('cm_monitor').doc(SHARED_FEED_DOC).get();
+      if (doc.exists) items = doc.data().items || [];
+    } catch(e) { console.warn('loadSharedFeedAndSync Firebase failed:', e); }
+  }
 
-    const activities   = DB.get(userKey('activities'), []);
-    const existingUrls = new Set(activities.filter(a => a.url).map(a => a.url));
-    let added = 0;
-
-    relevant.forEach(item => {
-      if (item.url && existingUrls.has(item.url)) return; // 去重
-      const comp = nameToComp[item.compName];
-      if (!comp) return;
-      activities.unshift({
-        id: 'a' + Date.now() + Math.random().toString(36).slice(2,5),
-        compId: comp.id,
-        channel: item.channel || '官網',
-        type:    item.type    || '媒體報導',
-        title:   item.title,
-        desc:    item.desc || '',
-        date:    item.date || today(),
-        url:     item.url  || '',
-        addedBy: item.source + ' 自動匯入'
-      });
-      if (item.url) existingUrls.add(item.url);
-      added++;
+  // ② Firebase 不可用或無資料時，從本機快取讀取（管理員曾在此裝置上抓取過）
+  if (!items.length) {
+    const allBrokers = getAllUsersCompetitors();
+    allBrokers.forEach(c => {
+      DB.get(userKey('intel_alerts_' + c.id), []).forEach(i =>
+        items.push({ compName: c.name, channel:'官網', type:'媒體報導', source:'Google Alerts', ...i })
+      );
+      DB.get(userKey('intel_yt_' + c.id), []).forEach(i =>
+        items.push({ compName: c.name, channel:'YouTube', type:'KOL合作', source:'YouTube', ...i })
+      );
     });
+  }
 
-    if (added > 0) {
-      saveData('activities', activities);
-      showToast(`✅ 已從管理員情報庫同步 ${added} 筆最新競品動態`, 'success');
-    }
-  } catch(e) { console.warn('loadSharedFeedAndSync failed:', e); }
+  if (!items.length) {
+    showToast('目前尚無管理員預先抓取的情報資料，請聯絡管理員先執行情報抓取', '');
+    return;
+  }
+
+  const myComps = DB.get(userKey('competitors'), []);
+  if (!myComps.length) {
+    showToast('請先設定要監控的競品券商', 'error');
+    return;
+  }
+
+  // 以競品名稱比對（不同使用者對同一家券商的 id 可能不同）
+  const myCompNames = new Set(myComps.map(c => c.name));
+  const nameToComp  = Object.fromEntries(myComps.map(c => [c.name, c]));
+  const relevant    = items.filter(item => myCompNames.has(item.compName));
+
+  if (!relevant.length) {
+    showToast('管理員情報庫中目前沒有您監控的競品資料', '');
+    return;
+  }
+
+  const activities   = DB.get(userKey('activities'), []);
+  const existingUrls = new Set(activities.filter(a => a.url).map(a => a.url));
+  let added = 0;
+
+  relevant.forEach(item => {
+    if (item.url && existingUrls.has(item.url)) return; // URL 去重
+    const comp = nameToComp[item.compName];
+    if (!comp) return;
+    activities.unshift({
+      id:      'a' + Date.now() + Math.random().toString(36).slice(2,5),
+      compId:  comp.id,
+      channel: item.channel || '官網',
+      type:    item.type    || '媒體報導',
+      title:   item.title,
+      desc:    item.desc  || '',
+      date:    item.date  || today(),
+      url:     item.url   || '',
+      addedBy: (item.source || '管理員') + ' 自動匯入'
+    });
+    if (item.url) existingUrls.add(item.url);
+    added++;
+  });
+
+  if (added > 0) {
+    saveData('activities', activities);
+    showToast(`✅ 已同步 ${added} 筆最新競品情報至即時動態`, 'success');
+  } else {
+    showToast('即時動態已是最新，無新增項目', '');
+  }
 }
 
 function renderSetupLockedView(el, comps) {
