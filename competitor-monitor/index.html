@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
@@ -211,31 +211,6 @@
   .period-btn:hover { border-color:var(--accent); color:var(--accent); }
   .period-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; }
 
-  /* ── CAMPAIGNS ── */
-  .cmp-group { margin-bottom:24px; }
-  .cmp-group-header { display:flex; align-items:center; gap:10px; padding:10px 16px; background:var(--primary); color:#fff; border-radius:10px 10px 0 0; }
-  .cmp-group-header h3 { font-size:15px; font-weight:700; flex:1; }
-  .cmp-group-body { border:1.5px solid var(--border); border-top:none; border-radius:0 0 10px 10px; overflow:hidden; }
-  .cmp-group-empty { padding:18px; text-align:center; color:var(--text-muted); font-size:13px; }
-  .campaign-card { display:grid; grid-template-columns:3px 1fr auto; align-items:start; gap:0; border-bottom:1px solid var(--border); background:var(--card); transition:.15s; }
-  .campaign-card:last-child { border-bottom:none; }
-  .campaign-card:hover { background:#f5f8ff; }
-  .campaign-card .cc-bar { height:100%; min-height:72px; border-radius:0; }
-  .campaign-card .cc-body { padding:12px 16px; }
-  .campaign-card .cc-actions { padding:12px 14px; display:flex; flex-direction:column; gap:6px; align-items:flex-end; }
-  .campaign-status { display:inline-flex; align-items:center; gap:4px; border-radius:20px; padding:3px 10px; font-size:11px; font-weight:700; }
-  .status-active   { background:#d4f5e2; color:#1a7a40; }
-  .status-upcoming { background:#fff3cd; color:#856404; }
-  .status-ended    { background:#f0f0f0; color:#888; }
-  .ctype-chip { display:inline-block; background:#e8eef7; color:#1a3a5c; border-radius:5px; padding:2px 8px; font-size:11px; margin-right:5px; }
-  .cc-title { font-size:14px; font-weight:600; color:var(--text); margin-bottom:4px; }
-  .cc-meta  { font-size:11.5px; color:var(--text-muted); }
-  .cc-desc  { font-size:12px; color:var(--text); margin-top:5px; line-height:1.5; }
-  .campaign-filter-bar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px; align-items:center; }
-  .campaign-filter-bar select { padding:8px 12px; border:1.5px solid var(--border); border-radius:8px; font-size:13px; background:var(--card); color:var(--text); }
-  .status-legend { display:flex; gap:14px; font-size:12px; color:var(--text-muted); align-items:center; }
-  .sl-dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:3px; vertical-align:middle; }
-
   /* ── ADD ACTIVITY MODAL ── */
   .add-modal { width: 580px; }
   .add-modal .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -435,9 +410,6 @@
       <div class="nav-item" onclick="showView('report')">
         <span class="nav-icon">📋</span> 監控報告
       </div>
-      <div class="nav-item" onclick="showView('campaigns')">
-        <span class="nav-icon">🎯</span> 競品行銷活動 <span id="navCampaignBadge" style="display:none;background:#e8a020;color:#fff;border-radius:8px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:4px"></span>
-      </div>
       <div class="nav-item" onclick="showView('intelTools')">
         <span class="nav-icon">🛠️</span> 情報工具箱
       </div>
@@ -476,18 +448,9 @@
           <div id="dashboardChannels"></div>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
-        <div class="card">
-          <div class="card-title">🔥 本週熱門動態</div>
-          <div id="dashboardRecent"></div>
-        </div>
-        <div class="card">
-          <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
-            <span>🎯 進行中的行銷活動</span>
-            <button class="btn btn-outline" style="font-size:11px;padding:4px 10px" onclick="showView('campaigns')">查看全部 →</button>
-          </div>
-          <div id="dashboardCampaigns"></div>
-        </div>
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-title">🔥 本週熱門動態</div>
+        <div id="dashboardRecent"></div>
       </div>
     </div>
 
@@ -582,58 +545,13 @@
     </div>
 
     <!-- ── INTEL TOOLBOX ── -->
-    <!-- ════════════ 競品行銷活動 ════════════ -->
-    <div id="viewCampaigns" class="view">
-      <div class="page-header">
-        <div>
-          <h2>🎯 競品官網行銷活動</h2>
-          <p>追蹤各競品正在進行中的促銷、優惠與行銷活動</p>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-outline" onclick="exportCampaignsPDF()">📄 匯出報告</button>
-          <button class="btn btn-primary" onclick="openAddCampaignModal()">＋ 新增活動</button>
-        </div>
-      </div>
-
-      <!-- Filter Bar -->
-      <div class="campaign-filter-bar">
-        <select id="cmpCompFilter" onchange="renderCampaigns()">
-          <option value="">所有競品</option>
-        </select>
-        <select id="cmpStatusFilter" onchange="renderCampaigns()">
-          <option value="">全部狀態</option>
-          <option value="active">🟢 進行中</option>
-          <option value="upcoming">🟡 即將到來</option>
-          <option value="ended">⚫ 已結束</option>
-        </select>
-        <select id="cmpTypeFilter" onchange="renderCampaigns()">
-          <option value="">所有類型</option>
-          <option>開戶優惠</option>
-          <option>手續費折扣</option>
-          <option>新產品上市</option>
-          <option>限時活動</option>
-          <option>贈品活動</option>
-          <option>ETF/基金活動</option>
-          <option>KOL合作</option>
-          <option>其他</option>
-        </select>
-        <div class="status-legend">
-          <span><span class="sl-dot" style="background:#1a7a40"></span>進行中</span>
-          <span><span class="sl-dot" style="background:#e8a020"></span>即將到來</span>
-          <span><span class="sl-dot" style="background:#bbb"></span>已結束</span>
-        </div>
-      </div>
-
-      <div id="campaignsContainer"></div>
-    </div>
-
     <!-- ════════════ 情報工具箱 ════════════ -->
     <div id="viewIntelTools" class="view">
       <div class="page-header">
         <div><h2>🛠️ 免費情報工具箱</h2><p>整合 Google Alerts、Meta 廣告庫與 YouTube，即時掌握競品最新動態</p></div>
         <div style="display:flex;gap:8px;align-items:center">
           <button class="btn btn-primary" onclick="fetchAllIntel()">🔄 全部抓取</button>
-          <button class="btn btn-success" onclick="importAllIntelToFeed()">📥 全部加入動態</button>
+          <button class="btn btn-success" onclick="importAllIntelToFeed()">📥 加入已勾選至即時動態</button>
         </div>
       </div>
       <!-- Tab Bar -->
@@ -756,59 +674,6 @@
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal('addActivityModal')">取消</button>
       <button class="btn btn-primary" onclick="addActivity()">儲存</button>
-    </div>
-  </div>
-</div>
-
-<!-- Add/Edit Campaign Modal -->
-<div class="modal-overlay" id="campaignModal">
-  <div class="modal" style="width:560px">
-    <h3 id="campaignModalTitle">＋ 新增競品行銷活動</h3>
-    <input type="hidden" id="cmpEditId">
-    <div class="form-row">
-      <div class="form-group" style="flex:1">
-        <label>競品名稱 <span style="color:red">*</span></label>
-        <select id="cmpCompId" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:14px"></select>
-      </div>
-      <div class="form-group" style="flex:1">
-        <label>活動類型 <span style="color:red">*</span></label>
-        <select id="cmpType" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:14px">
-          <option>開戶優惠</option>
-          <option>手續費折扣</option>
-          <option>新產品上市</option>
-          <option>限時活動</option>
-          <option>贈品活動</option>
-          <option>ETF/基金活動</option>
-          <option>KOL合作</option>
-          <option>其他</option>
-        </select>
-      </div>
-    </div>
-    <div class="form-group">
-      <label>活動名稱 <span style="color:red">*</span></label>
-      <input type="text" id="cmpName" placeholder="例：開戶送 500 元現金券" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:14px">
-    </div>
-    <div class="form-row">
-      <div class="form-group" style="flex:1">
-        <label>開始日期 <span style="color:red">*</span></label>
-        <input type="date" id="cmpStartDate" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:14px">
-      </div>
-      <div class="form-group" style="flex:1">
-        <label>結束日期 <span style="color:var(--text-muted);font-size:12px">（未定則留空）</span></label>
-        <input type="date" id="cmpEndDate" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:14px">
-      </div>
-    </div>
-    <div class="form-group">
-      <label>活動說明</label>
-      <textarea id="cmpDesc" rows="3" placeholder="活動內容、優惠條件、限制說明…" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:14px;resize:vertical"></textarea>
-    </div>
-    <div class="form-group">
-      <label>官網活動連結</label>
-      <input type="url" id="cmpUrl" placeholder="https://..." style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:14px">
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeModal('campaignModal')">取消</button>
-      <button class="btn btn-primary" onclick="saveCampaign()">💾 儲存活動</button>
     </div>
   </div>
 </div>
@@ -960,7 +825,7 @@ const FIREBASE_CONFIG = {
 };
 let cloudDB = null;
 let cloudListener = null;
-const SYNC_FIELDS = ['competitors','activities','channels','intel_setup','campaigns'];
+const SYNC_FIELDS = ['competitors','activities','channels','intel_setup'];
 try {
   if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
   cloudDB = firebase.firestore();
@@ -1185,8 +1050,8 @@ async function bootApp() {
 // ═══════════════════════════════════════════════════════════
 //  NAVIGATION
 // ═══════════════════════════════════════════════════════════
-const viewMap = { dashboard:'viewDashboard', competitors:'viewCompetitors', feed:'viewFeed', report:'viewReport', campaigns:'viewCampaigns', intelTools:'viewIntelTools', adminUsers:'viewAdminUsers', adminLogs:'viewAdminLogs' };
-const navMap  = { dashboard:0, competitors:1, feed:2, report:3, campaigns:4, intelTools:5, adminUsers:6, adminLogs:7 };
+const viewMap = { dashboard:'viewDashboard', competitors:'viewCompetitors', feed:'viewFeed', report:'viewReport', intelTools:'viewIntelTools', adminUsers:'viewAdminUsers', adminLogs:'viewAdminLogs' };
+const navMap  = { dashboard:0, competitors:1, feed:2, report:3, intelTools:4, adminUsers:5, adminLogs:6 };
 
 function showView(name) {
   Object.values(viewMap).forEach(id => document.getElementById(id).classList.remove('active'));
@@ -1200,7 +1065,6 @@ function showView(name) {
   if (name === 'competitors') renderCompetitors();
   if (name === 'feed') { buildKwInputs(); renderFeed(); }
   if (name === 'report') generateReport();
-  if (name === 'campaigns') showViewCampaigns();
   if (name === 'intelTools') renderIntelTools();
   if (name === 'adminUsers') renderUsers();
   if (name === 'adminLogs') renderLogs();
@@ -1219,13 +1083,10 @@ function renderDashboard() {
   const oneMonthAgo = new Date(); oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
   const recent = activities.filter(a => new Date(a.date) >= oneMonthAgo);
 
-  const allCampaigns = DB.get(userKey('campaigns'), []);
-  const activeCampaigns = allCampaigns.filter(c => getCampaignStatus(c) === 'active');
   document.getElementById('dashboardStats').innerHTML = `
     <div class="stat-card" style="cursor:pointer" onclick="showView('competitors')"><div class="stat-icon blue">🏢</div><div class="stat-info"><div class="stat-value">${comps.length}</div><div class="stat-label">監控中的對手</div></div></div>
     <div class="stat-card"><div class="stat-icon green">📡</div><div class="stat-info"><div class="stat-value">${channels.length}</div><div class="stat-label">監控頻道數</div></div></div>
     <div class="stat-card" style="cursor:pointer" onclick="showView('feed')"><div class="stat-icon orange">📰</div><div class="stat-info"><div class="stat-value">${recent.length}</div><div class="stat-label">近 30 天動態</div></div></div>
-    <div class="stat-card" style="cursor:pointer" onclick="showView('campaigns')"><div class="stat-icon red">🎯</div><div class="stat-info"><div class="stat-value">${activeCampaigns.length}</div><div class="stat-label">進行中行銷活動</div></div></div>
   `;
   document.getElementById('compCountBadge').textContent = comps.length + ' / 5';
   document.getElementById('dashboardCompList').innerHTML = comps.length ? comps.map(c => `
@@ -1252,8 +1113,6 @@ function renderDashboard() {
     ? top5.map(a => renderActivityItem(a, true)).join('')
     : '<div class="empty-state"><div class="empty-icon">📭</div><p>尚無動態資料，請先設定監控對手並新增資料</p></div>';
 
-  renderDashboardCampaigns();
-  updateNavCampaignBadge();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1711,294 +1570,6 @@ function generateFeedPDF(range, sortMode) {
   showToast('✅ 報告視窗已開啟，請選擇「另存為 PDF」', 'success');
 }
 
-// ══════════════════════════════════════════
-//  🎯 競品行銷活動模組
-// ══════════════════════════════════════════
-
-function getCampaignStatus(c) {
-  const t = today();
-  if (c.endDate && c.endDate < t) return 'ended';
-  if (c.startDate > t) return 'upcoming';
-  return 'active';
-}
-function statusLabel(s) {
-  return s === 'active' ? '🟢 進行中' : s === 'upcoming' ? '🟡 即將到來' : '⚫ 已結束';
-}
-function statusCls(s) {
-  return s === 'active' ? 'status-active' : s === 'upcoming' ? 'status-upcoming' : 'status-ended';
-}
-function barColor(s) {
-  return s === 'active' ? '#1a7a40' : s === 'upcoming' ? '#e8a020' : '#bbb';
-}
-
-function showViewCampaigns() {
-  const comps = DB.get(userKey('competitors'), []);
-  const sel = document.getElementById('cmpCompFilter');
-  if (sel) {
-    const cur = sel.value;
-    sel.innerHTML = '<option value="">所有競品</option>' +
-      comps.map(c => `<option value="${c.id}" ${cur===c.id?'selected':''}>${c.name}</option>`).join('');
-  }
-  renderCampaigns();
-}
-
-function renderCampaigns() {
-  const comps      = DB.get(userKey('competitors'), []);
-  const campaigns  = DB.get(userKey('campaigns'), []);
-  const compFilter = document.getElementById('cmpCompFilter')?.value || '';
-  const stFilter   = document.getElementById('cmpStatusFilter')?.value || '';
-  const typeFilter = document.getElementById('cmpTypeFilter')?.value || '';
-  const container  = document.getElementById('campaignsContainer');
-  if (!container) return;
-
-  let filtered = campaigns.filter(c => {
-    if (compFilter && c.compId !== compFilter) return false;
-    if (stFilter   && getCampaignStatus(c) !== stFilter) return false;
-    if (typeFilter && c.type !== typeFilter) return false;
-    return true;
-  });
-
-  if (!comps.length) {
-    container.innerHTML = '<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">請先至「監控對手設定」新增競品，再記錄其行銷活動</div>';
-    return;
-  }
-
-  const compOrder = compFilter ? comps.filter(c => c.id === compFilter) : comps;
-  let html = '';
-  compOrder.forEach(comp => {
-    const compCampaigns = filtered
-      .filter(c => c.compId === comp.id)
-      .sort((a,b) => {
-        const order = { active:0, upcoming:1, ended:2 };
-        const sa = getCampaignStatus(a), sb = getCampaignStatus(b);
-        if (order[sa] !== order[sb]) return order[sa] - order[sb];
-        return (b.startDate||'').localeCompare(a.startDate||'');
-      });
-    const activeCnt = compCampaigns.filter(c => getCampaignStatus(c) === 'active').length;
-    html += `<div class="cmp-group">
-      <div class="cmp-group-header">
-        <span style="width:32px;height:32px;background:rgba(255,255,255,.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px">${comp.name[0]}</span>
-        <h3>${comp.name}</h3>
-        ${activeCnt ? `<span style="background:#1a7a40;color:#fff;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700">${activeCnt} 個進行中</span>` : ''}
-        <button onclick="openAddCampaignModal('${comp.id}')" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;margin-left:8px">＋ 新增</button>
-      </div>
-      <div class="cmp-group-body">`;
-    if (!compCampaigns.length) {
-      html += `<div class="cmp-group-empty">尚未記錄任何行銷活動 — <a href="javascript:void(0)" onclick="openAddCampaignModal('${comp.id}')" style="color:var(--accent)">立即新增</a></div>`;
-    } else {
-      compCampaigns.forEach(c => {
-        const st = getCampaignStatus(c);
-        const dateRange = c.endDate
-          ? `${c.startDate} ～ ${c.endDate}`
-          : `${c.startDate} 起（未定結束）`;
-        html += `<div class="campaign-card">
-          <div class="cc-bar" style="background:${barColor(st)}"></div>
-          <div class="cc-body">
-            <div class="cc-title">${c.name}</div>
-            <div class="cc-meta">
-              <span class="ctype-chip">${c.type}</span>
-              📅 ${dateRange}
-            </div>
-            ${c.desc ? `<div class="cc-desc">${c.desc}</div>` : ''}
-            ${c.url  ? `<div style="margin-top:5px"><a href="${c.url}" target="_blank" style="font-size:11px;color:var(--primary-light)">🔗 前往官網活動頁面</a></div>` : ''}
-          </div>
-          <div class="cc-actions">
-            <span class="campaign-status ${statusCls(st)}">${statusLabel(st)}</span>
-            <button onclick="editCampaign('${c.id}')" style="background:none;border:1px solid var(--border);border-radius:5px;padding:4px 10px;cursor:pointer;font-size:11px;color:var(--text-muted)">✏️ 編輯</button>
-            <button onclick="deleteCampaign('${c.id}')" style="background:none;border:1px solid #fcc;border-radius:5px;padding:4px 10px;cursor:pointer;font-size:11px;color:var(--danger)">🗑️</button>
-          </div>
-        </div>`;
-      });
-    }
-    html += '</div></div>';
-  });
-  container.innerHTML = html || '<div class="card" style="text-align:center;padding:40px;color:var(--text-muted)">目前篩選條件下無資料</div>';
-}
-
-function openAddCampaignModal(preCompId) {
-  const comps = DB.get(userKey('competitors'), []);
-  if (!comps.length) { showToast('請先設定監控對手', 'error'); return; }
-  document.getElementById('campaignModalTitle').textContent = '＋ 新增競品行銷活動';
-  document.getElementById('cmpEditId').value = '';
-  document.getElementById('cmpName').value = '';
-  document.getElementById('cmpDesc').value = '';
-  document.getElementById('cmpUrl').value = '';
-  document.getElementById('cmpStartDate').value = today();
-  document.getElementById('cmpEndDate').value = '';
-  const sel = document.getElementById('cmpCompId');
-  sel.innerHTML = comps.map(c => `<option value="${c.id}" ${c.id===(preCompId||comps[0].id)?'selected':''}>${c.name}</option>`).join('');
-  openModal('campaignModal');
-}
-
-function editCampaign(id) {
-  const campaigns = DB.get(userKey('campaigns'), []);
-  const c = campaigns.find(x => x.id === id);
-  if (!c) return;
-  const comps = DB.get(userKey('competitors'), []);
-  document.getElementById('campaignModalTitle').textContent = '✏️ 編輯行銷活動';
-  document.getElementById('cmpEditId').value = c.id;
-  document.getElementById('cmpName').value = c.name;
-  document.getElementById('cmpDesc').value = c.desc || '';
-  document.getElementById('cmpUrl').value = c.url || '';
-  document.getElementById('cmpStartDate').value = c.startDate;
-  document.getElementById('cmpEndDate').value = c.endDate || '';
-  document.getElementById('cmpType').value = c.type;
-  const sel = document.getElementById('cmpCompId');
-  sel.innerHTML = comps.map(comp => `<option value="${comp.id}" ${comp.id===c.compId?'selected':''}>${comp.name}</option>`).join('');
-  openModal('campaignModal');
-}
-
-function saveCampaign() {
-  const name = document.getElementById('cmpName').value.trim();
-  const compId = document.getElementById('cmpCompId').value;
-  const startDate = document.getElementById('cmpStartDate').value;
-  if (!name)  { showToast('請輸入活動名稱', 'error'); return; }
-  if (!compId){ showToast('請選擇競品', 'error'); return; }
-  if (!startDate){ showToast('請選擇開始日期', 'error'); return; }
-  const campaigns = DB.get(userKey('campaigns'), []);
-  const editId = document.getElementById('cmpEditId').value;
-  const obj = {
-    id: editId || 'cmp' + Date.now(),
-    compId,
-    name,
-    type: document.getElementById('cmpType').value,
-    startDate,
-    endDate: document.getElementById('cmpEndDate').value || '',
-    desc: document.getElementById('cmpDesc').value.trim(),
-    url: document.getElementById('cmpUrl').value.trim(),
-    createdAt: editId ? (campaigns.find(c=>c.id===editId)||{}).createdAt || today() : today(),
-  };
-  if (editId) {
-    const idx = campaigns.findIndex(c => c.id === editId);
-    if (idx >= 0) campaigns[idx] = obj; else campaigns.unshift(obj);
-  } else {
-    campaigns.unshift(obj);
-  }
-  saveData('campaigns', campaigns);
-  closeModal('campaignModal');
-  showToast(editId ? '✅ 活動已更新' : '✅ 活動已新增', 'success');
-  renderCampaigns();
-  updateNavCampaignBadge();
-}
-
-function deleteCampaign(id) {
-  if (!confirm('確定要刪除這筆行銷活動？')) return;
-  let campaigns = DB.get(userKey('campaigns'), []);
-  campaigns = campaigns.filter(c => c.id !== id);
-  saveData('campaigns', campaigns);
-  showToast('🗑️ 已刪除', 'success');
-  renderCampaigns();
-  updateNavCampaignBadge();
-}
-
-function updateNavCampaignBadge() {
-  const campaigns = DB.get(userKey('campaigns'), []);
-  const activeCnt = campaigns.filter(c => getCampaignStatus(c) === 'active').length;
-  const badge = document.getElementById('navCampaignBadge');
-  if (!badge) return;
-  if (activeCnt > 0) { badge.textContent = activeCnt; badge.style.display = 'inline'; }
-  else badge.style.display = 'none';
-}
-
-function renderDashboardCampaigns() {
-  const comps = DB.get(userKey('competitors'), []);
-  const campaigns = DB.get(userKey('campaigns'), []);
-  const active = campaigns.filter(c => getCampaignStatus(c) === 'active')
-    .sort((a,b) => (a.endDate||'9999').localeCompare(b.endDate||'9999'));
-  const el = document.getElementById('dashboardCampaigns');
-  if (!el) return;
-  if (!active.length) {
-    el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px">目前無進行中的活動</div>';
-    return;
-  }
-  el.innerHTML = active.slice(0,6).map(c => {
-    const comp = comps.find(x => x.id === c.compId);
-    const daysLeft = c.endDate
-      ? Math.max(0, Math.ceil((new Date(c.endDate) - new Date()) / 86400000))
-      : null;
-    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-      <span style="width:28px;height:28px;background:var(--primary);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${comp ? comp.name[0] : '?'}</span>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>
-        <div style="font-size:11px;color:var(--text-muted)">${comp ? comp.name : '—'} · <span class="ctype-chip" style="font-size:10px">${c.type}</span></div>
-      </div>
-      <div style="text-align:right;flex-shrink:0">
-        ${daysLeft !== null
-          ? `<div style="font-size:11px;color:${daysLeft<=7?'#c0392b':'#1a7a40'};font-weight:600">${daysLeft===0?'今天截止':`剩 ${daysLeft} 天`}</div>`
-          : '<div style="font-size:11px;color:var(--text-muted)">無截止</div>'}
-        <div style="font-size:10px;color:var(--text-muted)">至 ${c.endDate||'—'}</div>
-      </div>
-    </div>`;
-  }).join('') + (active.length > 6 ? `<div style="text-align:center;font-size:12px;color:var(--text-muted);padding:8px">還有 ${active.length - 6} 個活動…</div>` : '');
-}
-
-function exportCampaignsPDF() {
-  const comps = DB.get(userKey('competitors'), []);
-  const campaigns = DB.get(userKey('campaigns'), []);
-  const compFilter = document.getElementById('cmpCompFilter')?.value || '';
-  const stFilter   = document.getElementById('cmpStatusFilter')?.value || '';
-  const typeFilter = document.getElementById('cmpTypeFilter')?.value || '';
-  let filtered = campaigns.filter(c => {
-    if (compFilter && c.compId !== compFilter) return false;
-    if (stFilter   && getCampaignStatus(c) !== stFilter) return false;
-    if (typeFilter && c.type !== typeFilter) return false;
-    return true;
-  });
-  if (!filtered.length) { showToast('目前篩選條件下無資料', 'error'); return; }
-
-  const stMap = { active:'進行中', upcoming:'即將到來', ended:'已結束' };
-  let bodyRows = '';
-  const compOrder = compFilter ? comps.filter(c=>c.id===compFilter) : comps;
-  compOrder.forEach(comp => {
-    const rows = filtered.filter(c=>c.compId===comp.id)
-      .sort((a,b)=>{ const o={active:0,upcoming:1,ended:2}; return o[getCampaignStatus(a)]-o[getCampaignStatus(b)] || b.startDate.localeCompare(a.startDate); });
-    if (!rows.length) return;
-    bodyRows += `<tr style="background:#e8eef7"><td colspan="6" style="font-weight:700;padding:8px 10px;color:#1a3a5c;border-top:2px solid #1a3a5c">🏢 ${comp.name}</td></tr>`;
-    rows.forEach(c => {
-      bodyRows += `<tr>
-        <td>${stMap[getCampaignStatus(c)]}</td>
-        <td>${c.type}</td>
-        <td>${c.name}</td>
-        <td>${c.startDate}</td>
-        <td>${c.endDate||'未定'}</td>
-        <td>${c.desc||'—'}</td>
-      </tr>`;
-    });
-  });
-
-  const html = `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8">
-<title>競品行銷活動報告 ${today()}</title>
-<style>
-  @page { size: A4 landscape; margin: 14mm; }
-  body { font-family:'Microsoft JhengHei','Segoe UI',sans-serif; font-size:11px; color:#1e2d40; margin:0; }
-  .rh { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2.5px solid #1a3a5c; padding-bottom:10px; margin-bottom:12px; }
-  .rh h1 { font-size:18px; color:#1a3a5c; margin:0 0 3px; }
-  .meta { font-size:10px; color:#6b7c93; text-align:right; line-height:1.8; }
-  table { width:100%; border-collapse:collapse; }
-  thead tr { background:#1a3a5c; color:#fff; }
-  th { padding:7px 9px; font-size:10px; font-weight:700; text-align:left; }
-  td { padding:5.5px 9px; border-bottom:1px solid #e5e9ef; font-size:10.5px; vertical-align:top; }
-  tbody tr:nth-child(even):not([style]) { background:#f8fafc; }
-  .footer { margin-top:12px; text-align:center; font-size:9px; color:#aaa; border-top:1px solid #e5e9ef; padding-top:7px; }
-</style></head><body>
-<div class="rh">
-  <div><h1>🎯 競品官網行銷活動報告</h1><div style="font-size:11px;color:#6b7c93">犇亞證券 — 同業戰情監控系統</div></div>
-  <div class="meta">產出日期：${today()}<br>產出人員：${currentUser.displayName}<br>資料筆數：${filtered.length} 筆</div>
-</div>
-<table>
-  <thead><tr><th>狀態</th><th>類型</th><th>活動名稱</th><th>開始日期</th><th>結束日期</th><th>說明</th></tr></thead>
-  <tbody>${bodyRows}</tbody>
-</table>
-<div class="footer">本報告由犇亞證券同業戰情監控系統自動產生 — ${today()}</div>
-</body></html>`;
-  const w = window.open('', '_blank', 'width:1100,height:750');
-  if (!w) { showToast('請允許彈出視窗', 'error'); return; }
-  w.document.write(html); w.document.close(); w.focus();
-  setTimeout(() => w.print(), 700);
-  showToast('✅ 報告視窗已開啟，請選擇「另存為 PDF」', 'success');
-}
-
-// ── end campaigns module ──
 
 function openAddActivityModal() {
   const comps = DB.get(userKey('competitors'), []);
@@ -2498,10 +2069,6 @@ function renderBannerCacheHtml(compId, items) {
         ${item.desc ? `<div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:4px">${item.desc}</div>` : ''}
         <a href="${item.url}" target="_blank" onclick="event.stopPropagation()" style="font-size:11px;color:var(--primary-light)">🔗 前往活動頁面</a>
       </div>
-      <div style="flex-shrink:0">
-        <button onclick="event.preventDefault();event.stopPropagation();addBannerToCampaign('${compId}', ${i})"
-          style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;white-space:nowrap">🎯 加入活動</button>
-      </div>
     </label>`).join('');
 
   return `
@@ -2512,10 +2079,6 @@ function renderBannerCacheHtml(compId, items) {
             onchange="toggleAllBanners('${compId}', this.checked)"> 全選
         </label>
       </div>
-      <button onclick="addSelectedBannersToFeed('${compId}')"
-        style="background:var(--success);color:#fff;border:none;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer">
-        📡 加入已勾選至即時動態
-      </button>
     </div>
     ${rows}`;
 }
@@ -2695,24 +2258,6 @@ function addBannerToFeed(compId, idx) {
   });
   saveData('activities', activities);
   showToast('✅ 已加入即時動態', 'success');
-}
-
-function addBannerToCampaign(compId, idx) {
-  const items = DB.get(userKey('intel_banner_'+compId), []);
-  const item  = items[idx]; if (!item) return;
-  const comps = DB.get(userKey('competitors'), []);
-  // 預填活動 Modal
-  document.getElementById('campaignModalTitle').textContent = '＋ 從 Banner 新增活動';
-  document.getElementById('cmpEditId').value = '';
-  document.getElementById('cmpName').value  = item.title || '';
-  document.getElementById('cmpDesc').value  = item.desc  || '';
-  document.getElementById('cmpUrl').value   = item.url   || '';
-  document.getElementById('cmpStartDate').value = item.date || today();
-  document.getElementById('cmpEndDate').value   = '';
-  document.getElementById('cmpType').value = '限時活動';
-  const sel = document.getElementById('cmpCompId');
-  sel.innerHTML = comps.map(c => `<option value="${c.id}" ${c.id===compId?'selected':''}>${c.name}</option>`).join('');
-  openModal('campaignModal');
 }
 
 // ── 抓取 Google Alerts RSS ──
