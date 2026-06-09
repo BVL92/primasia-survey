@@ -1959,10 +1959,9 @@ function importAllIntelToFeed() {
 }
 
 // ── Google Alerts 標籤 ──
-async function renderIntelAlerts() {
+function renderIntelAlerts() {
   const el = document.getElementById('intelAlertsContent');
-  el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px">⏳ 載入競品清單…</div>';
-  const comps = await getAllUsersCompetitors();
+  const comps = getAllUsersCompetitors();
   const setup = getIntelSetup();
   let html = '';
   if (!comps.length) {
@@ -1996,10 +1995,8 @@ async function renderIntelAlerts() {
 }
 
 // ── Meta 廣告庫標籤 ──
-async function renderIntelMeta() {
-  document.getElementById('intelMetaContent').innerHTML =
-    '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px">⏳ 載入競品清單…</div>';
-  const comps = await getAllUsersCompetitors();
+function renderIntelMeta() {
+  const comps = getAllUsersCompetitors();
   let html = `
     <div class="intel-notice" style="background:#e8f4ff;border-color:#93c5fd">
       <span style="font-size:26px;flex-shrink:0">📘</span>
@@ -2047,10 +2044,8 @@ async function renderIntelMeta() {
 }
 
 // ── YouTube 標籤 ──
-async function renderIntelYoutube() {
-  document.getElementById('intelYoutubeContent').innerHTML =
-    '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px">⏳ 載入競品清單…</div>';
-  const comps = await getAllUsersCompetitors();
+function renderIntelYoutube() {
+  const comps = getAllUsersCompetitors();
   const setup = getIntelSetup();
   let html = `
     <div class="intel-notice" style="background:#fff2f2;border-color:#fca5a5">
@@ -2369,15 +2364,10 @@ function isSetupLocked() {
   return DB.get('intel_setup_locked', false);
 }
 
-async function renderIntelSetupTab() {
+function renderIntelSetupTab() {
   const el = document.getElementById('intelSetupContent');
   if (!el) return;
-
-  // 載入中提示
-  el.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:13px">⏳ 正在載入所有使用者的競品清單…</div>`;
-
-  // 從所有使用者帳號的 Firebase 文件中合併競品清單
-  const comps = await getAllUsersCompetitors();
+  const comps = getAllUsersCompetitors();
 
   if (!comps.length) {
     el.innerHTML = `<div class="empty-state"><div class="empty-icon">🏢</div>
@@ -2392,15 +2382,15 @@ async function renderIntelSetupTab() {
   }
 }
 
-// 取得完整競品清單：以 BROKER_LIST 全部 33 家為基底，使用者實際設定的競品再疊加覆蓋
-// （使用者設定的競品保留原始 id，以維持 activities / 快取相容性）
-async function getAllUsersCompetitors() {
+// 取得完整競品清單（同步）：以 BROKER_LIST 全部券商為基底，管理員自己的競品再疊加覆蓋。
+// 不等待 Firebase，避免因網路或規則問題導致頁面掛住。
+function getAllUsersCompetitors() {
   const merged = new Map(); // name → comp object
 
-  // ① 先以 BROKER_LIST 全部券商為基底（穩定 id：bl_ + 名稱）
+  // ① 以 BROKER_LIST 全部券商為基底（穩定 id：bl_ + 名稱）
   BROKER_LIST.forEach(b => {
     merged.set(b.name, {
-      id:   'bl_' + b.name,  // 穩定、不變的 id
+      id:   'bl_' + b.name,
       name: b.name,
       url:  b.url  || '',
       fb:   b.fb   || '',
@@ -2410,34 +2400,27 @@ async function getAllUsersCompetitors() {
     });
   });
 
-  // ② 管理員自己設定的競品覆蓋（保留原本 id，以免快取失效）
+  // ② 管理員自己設定的競品覆蓋（保留原本 id，讓既有 activities / 快取不失效）
   DB.get(userKey('competitors'), []).forEach(c => {
     if (c.name) merged.set(c.name, c);
   });
 
-  // ③ 其他使用者在 Firebase 設定的競品也納入（補充不在 BROKER_LIST 的自訂券商）
-  if (cloudDB) {
+  // ③ 若有其他使用者自訂（不在 BROKER_LIST）的券商，從本機快取補入
+  //    （Firebase 同步由 bootApp 的 loadSharedIntelSetup 負責，這裡只讀 localStorage）
+  Object.keys(localStorage).forEach(k => {
+    if (!k.startsWith('cm_competitors_')) return;
     try {
-      const snapshot = await cloudDB.collection('cm_monitor').get();
-      snapshot.docs.forEach(doc => {
-        if (doc.id === SHARED_INTEL_DOC || doc.id === SHARED_FEED_DOC) return;
-        const data = doc.data();
-        if (Array.isArray(data.competitors)) {
-          data.competitors.forEach(c => {
-            // 只補 BROKER_LIST 以外的自訂券商；BROKER_LIST 已有的以步驟②結果為準
-            if (c.name && !BROKER_LIST.some(b => b.name === c.name) && !merged.has(c.name)) {
-              merged.set(c.name, c);
-            }
-          });
+      const comps = JSON.parse(localStorage.getItem(k)) || [];
+      comps.forEach(c => {
+        if (c.name && !BROKER_LIST.some(b => b.name === c.name) && !merged.has(c.name)) {
+          merged.set(c.name, c);
         }
       });
-    } catch(e) {
-      console.warn('讀取其他使用者競品失敗（BROKER_LIST 仍完整顯示）:', e);
-    }
-  }
+    } catch(e) {}
+  });
 
   const result = Array.from(merged.values());
-  _mergedCompsCache = result; // 快取供 fetchAlertsRSS / fetchYoutubeRSS 查詢 comp 名稱
+  _mergedCompsCache = result;
   return result;
 }
 
@@ -2477,7 +2460,7 @@ async function checkAutoFetch() {
 // 管理員：一鍵抓取所有競品的情報並儲存到共用 Firebase 文件
 async function autoFetchAllForSharedFeed() {
   showToast('🤖 每日自動情報抓取啟動中，完成後將同步給所有使用者…', '');
-  const comps = await getAllUsersCompetitors();
+  const comps = getAllUsersCompetitors();
   const setup = getIntelSetup();
   if (!comps.length) { showToast('⚠️ 尚無任何競品，跳過自動抓取', ''); return; }
 
@@ -2717,7 +2700,7 @@ function renderSetupEditForm(el, comps) {
 
 async function saveIntelSetupAll() {
   // 使用與 renderIntelSetupTab 相同的完整競品清單來讀取表單欄位
-  const comps = await getAllUsersCompetitors();
+  const comps = getAllUsersCompetitors();
   const setup = getIntelSetup();
   comps.forEach(c => {
     if (!setup[c.id]) setup[c.id] = {};
