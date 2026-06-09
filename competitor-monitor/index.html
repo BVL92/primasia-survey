@@ -1124,6 +1124,7 @@ function doLogout() {
 }
 
 async function bootApp() {
+  initData(); // 登入後再同步一次，確保 SYSTEM_USERS 完整
   document.getElementById('loginPage').style.display = 'none';
   document.getElementById('appShell').style.display = 'block';
   document.getElementById('sidebarUserName').textContent = currentUser.displayName;
@@ -3568,6 +3569,7 @@ function buildEmailBody(comps, activities) {
 let editingUserId = null;
 
 function renderUsers() {
+  initData(); // 確保 SYSTEM_USERS 永遠存在（防止 localStorage 遺失或腳本載入異常）
   const users = DB.get('users', []);
   const td = today();
   document.getElementById('usersTableBody').innerHTML = users.map(u => {
