@@ -2539,80 +2539,137 @@ async function autoFetchAllForSharedFeed() {
   }
 }
 
-// 一般使用者：從共用情報庫篩選出自己監控的競品動態並合併到即時動態
+// 一般使用者：依管理員設定好的情報來源，直接現場抓取並存入即時動態
+// 不依賴管理員「有無先執行過抓取」，只要 shared_intel_config 有設定即可運作
 async function loadSharedFeedAndSync() {
-  if (isAdmin()) return; // 管理員不需要，由自身抓取
-
-  let items = [];
-
-  // ① 優先從 Firebase 共用情報文件讀取
-  if (cloudDB) {
-    try {
-      const doc = await cloudDB.collection('cm_monitor').doc(SHARED_FEED_DOC).get();
-      if (doc.exists) items = doc.data().items || [];
-    } catch(e) { console.warn('loadSharedFeedAndSync Firebase failed:', e); }
-  }
-
-  // ② Firebase 不可用或無資料時，從本機快取讀取（管理員曾在此裝置上抓取過）
-  if (!items.length) {
-    const allBrokers = getAllUsersCompetitors();
-    allBrokers.forEach(c => {
-      DB.get(userKey('intel_alerts_' + c.id), []).forEach(i =>
-        items.push({ compName: c.name, channel:'官網', type:'媒體報導', source:'Google Alerts', ...i })
-      );
-      DB.get(userKey('intel_yt_' + c.id), []).forEach(i =>
-        items.push({ compName: c.name, channel:'YouTube', type:'KOL合作', source:'YouTube', ...i })
-      );
-    });
-  }
-
-  if (!items.length) {
-    showToast('目前尚無管理員預先抓取的情報資料，請聯絡管理員先執行情報抓取', '');
-    return;
-  }
+  if (isAdmin()) return;
 
   const myComps = DB.get(userKey('competitors'), []);
   if (!myComps.length) {
-    showToast('請先設定要監控的競品券商', 'error');
+    alert('【診斷】\n您的監控對手清單是空的。\n\n請先到「監控對手設定」頁面，\n勾選您要監控的券商後儲存，\n再回來點「同步情報資料」。');
     return;
   }
 
-  // 以競品名稱比對（不同使用者對同一家券商的 id 可能不同）
-  const myCompNames = new Set(myComps.map(c => c.name));
-  const nameToComp  = Object.fromEntries(myComps.map(c => [c.name, c]));
-  const relevant    = items.filter(item => myCompNames.has(item.compName));
+  // 讀取管理員設定的共用情報來源
+  // 先讀本機快取，若空則直接從 Firebase 重讀一次
+  let setup = getIntelSetup();
 
-  if (!relevant.length) {
-    showToast('管理員情報庫中目前沒有您監控的競品資料', '');
+  if (!Object.keys(setup).length && cloudDB) {
+    try {
+      const doc = await cloudDB.collection('cm_monitor').doc(SHARED_INTEL_DOC).get();
+      if (doc.exists && doc.data().intel_setup) {
+        setup = doc.data().intel_setup;
+        DB.set('intel_setup_shared', setup);
+      }
+    } catch(e) {
+      alert('【診斷】\n無法從雲端讀取情報設定。\n\n錯誤：' + e.message + '\n\n請確認網路連線是否正常。');
+      return;
+    }
+  }
+
+  // 以券商「名稱」比對 setup
+  // setup key 可能是 bl_名稱（新格式）或舊 comp id，一律雙重建立 nameToSetup
+  const allBrokers = getAllUsersCompetitors();
+  const nameToSetup = {};
+
+  // ① 用 bl_ id 匹配（新格式，最標準）
+  allBrokers.forEach(b => {
+    const s = setup[b.id];
+    if (s && (s.alertsRss || s.ytChannelId)) nameToSetup[b.name] = s;
+  });
+
+  // ② 若 ① 沒有結果，嘗試用券商名稱直接比對 setup 的所有 key（應對舊格式 id）
+  if (Object.keys(nameToSetup).length === 0) {
+    const brokerNames = new Set(allBrokers.map(b => b.name));
+    Object.entries(setup).forEach(([key, s]) => {
+      if (!s || (!s.alertsRss && !s.ytChannelId)) return;
+      // key 可能是 bl_元大證券 或 c_xxx_abc123；試著從 websiteUrl 或直接用 key 含的名稱比對
+      const matchedName = Array.from(brokerNames).find(name =>
+        key === 'bl_' + name || key.includes(name) || (s.websiteUrl && allBrokers.find(b=>b.name===name)?.url && s.websiteUrl.includes(allBrokers.find(b=>b.name===name)?.url?.replace(/https?:\/\//,'')))
+      );
+      if (matchedName && !nameToSetup[matchedName]) nameToSetup[matchedName] = s;
+    });
+  }
+
+  // 只處理使用者自己監控、且有設定情報來源的券商
+  const targets = myComps.filter(c => nameToSetup[c.name]);
+
+  if (!targets.length) {
+    const setupCount = Object.keys(nameToSetup).length;
+    const myNames = myComps.map(c=>c.name).join('、');
+    const setupNames = Object.keys(nameToSetup).join('、') || '（無）';
+    alert(
+      '【診斷】\n' +
+      '您的監控券商：' + myNames + '\n\n' +
+      '管理員已設定情報來源的券商（共' + setupCount + '家）：\n' + setupNames + '\n\n' +
+      (setupCount === 0
+        ? '→ 管理員尚未儲存任何情報設定，\n  請以管理員帳號登入「情報來源設定」後點「儲存並鎖定」。'
+        : '→ 您監控的券商名稱與設定清單不符，\n  請確認名稱是否完全一致。'
+      )
+    );
     return;
   }
+
+  showToast(`⏳ 正在抓取 ${targets.length} 家券商的最新情報…`);
 
   const activities   = DB.get(userKey('activities'), []);
   const existingUrls = new Set(activities.filter(a => a.url).map(a => a.url));
-  let added = 0;
+  let totalAdded = 0;
+  const errors = [];
 
-  relevant.forEach(item => {
-    if (item.url && existingUrls.has(item.url)) return; // URL 去重
-    const comp = nameToComp[item.compName];
-    if (!comp) return;
-    activities.unshift({
-      id:      'a' + Date.now() + Math.random().toString(36).slice(2,5),
-      compId:  comp.id,
-      channel: item.channel || '官網',
-      type:    item.type    || '媒體報導',
-      title:   item.title,
-      desc:    item.desc  || '',
-      date:    item.date  || today(),
-      url:     item.url   || '',
-      addedBy: (item.source || '管理員') + ' 自動匯入'
-    });
-    if (item.url) existingUrls.add(item.url);
-    added++;
-  });
+  for (const comp of targets) {
+    const cs = nameToSetup[comp.name];
 
-  if (added > 0) {
+    // ── Google Alerts RSS ──
+    if (cs.alertsRss) {
+      try {
+        const text = await fetchViaProxy(cs.alertsRss);
+        const xmlDoc = new DOMParser().parseFromString(text, 'application/xml');
+        Array.from(xmlDoc.querySelectorAll('entry, item')).slice(0, 15).forEach(node => {
+          const rawTitle = node.querySelector('title')?.textContent || '';
+          const title    = rawTitle.replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').trim().substring(0,120);
+          const link     = (node.querySelector('link')?.getAttribute('href') || node.querySelector('link')?.textContent || '').trim();
+          const pubRaw   = node.querySelector('published,pubDate,updated')?.textContent || '';
+          const desc     = (node.querySelector('summary,description,content')?.textContent||'').replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').trim().substring(0,150);
+          const d = pubRaw ? new Date(pubRaw).toISOString().split('T')[0] : today();
+          if (!title || (link && existingUrls.has(link))) return;
+          activities.unshift({ id:'a'+Date.now()+Math.random().toString(36).slice(2,5), compId:comp.id, channel:'官網', type:'媒體報導', title, desc, date:d, url:link, addedBy:'Google Alerts 自動匯入' });
+          if (link) existingUrls.add(link);
+          totalAdded++;
+        });
+      } catch(e) { errors.push(comp.name + '(Alerts)'); }
+    }
+
+    // ── YouTube RSS ──
+    if (cs.ytChannelId) {
+      try {
+        const ytId   = cs.ytChannelId.trim();
+        const rssUrl = ytId.startsWith('UC')
+          ? 'https://www.youtube.com/feeds/videos.xml?channel_id=' + ytId
+          : 'https://www.youtube.com/feeds/videos.xml?user=' + ytId.replace(/^@/,'');
+        const text = await fetchViaProxy(rssUrl);
+        const xmlDoc = new DOMParser().parseFromString(text, 'text/xml');
+        Array.from(xmlDoc.querySelectorAll('entry')).slice(0, 15).forEach(entry => {
+          const title = (entry.querySelector('title')?.textContent||'').trim().substring(0,120);
+          const link  = (entry.querySelector('link')?.getAttribute('href')||'').trim();
+          const pub   = entry.querySelector('published')?.textContent||'';
+          const desc  = (entry.querySelector('media\\:description,description')?.textContent||'').trim().substring(0,150);
+          const d = pub ? new Date(pub).toISOString().split('T')[0] : today();
+          if (!title || (link && existingUrls.has(link))) return;
+          activities.unshift({ id:'a'+Date.now()+Math.random().toString(36).slice(2,5), compId:comp.id, channel:'YouTube', type:'KOL合作', title, desc, date:d, url:link, addedBy:'YouTube 自動匯入' });
+          if (link) existingUrls.add(link);
+          totalAdded++;
+        });
+      } catch(e) { errors.push(comp.name + '(YouTube)'); }
+    }
+  }
+
+  if (totalAdded > 0) {
     saveData('activities', activities);
-    showToast(`✅ 已同步 ${added} 筆最新競品情報至即時動態`, 'success');
+    const errMsg = errors.length ? `（${errors.join('、')} 抓取失敗）` : '';
+    showToast(`✅ 已新增 ${totalAdded} 筆最新情報${errMsg}`, 'success');
+  } else if (errors.length) {
+    showToast('⚠️ 抓取失敗：' + errors.join('、') + '，請稍後再試', 'error');
   } else {
     showToast('即時動態已是最新，無新增項目', '');
   }
