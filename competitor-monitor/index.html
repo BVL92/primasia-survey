@@ -2410,9 +2410,18 @@ function getAllUsersCompetitors() {
     });
   });
 
-  // ② 管理員自己設定的競品覆蓋（保留原本 id，讓既有 activities / 快取不失效）
+  // ② 管理員自己設定的競品覆蓋（資料更新，但 BROKER_LIST 內的券商一律保留 bl_ id）
+  // 這樣情報設定 key 在所有帳號間一致，一般使用者才能正確查到管理員設定的來源
   DB.get(userKey('competitors'), []).forEach(c => {
-    if (c.name) merged.set(c.name, c);
+    if (!c.name) return;
+    const existing = merged.get(c.name);
+    if (existing && existing.id.startsWith('bl_')) {
+      // BROKER_LIST 內的券商：保留 bl_ id，僅更新資料欄位
+      merged.set(c.name, { ...c, id: existing.id });
+    } else {
+      // 不在 BROKER_LIST 的自訂券商：完整保留
+      merged.set(c.name, c);
+    }
   });
 
   // ③ 若有其他使用者自訂（不在 BROKER_LIST）的券商，從本機快取補入
