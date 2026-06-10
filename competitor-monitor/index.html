@@ -2806,14 +2806,21 @@ function renderSetupEditForm(el, comps) {
 async function saveIntelSetupAll() {
   // 使用與 renderIntelSetupTab 相同的完整競品清單來讀取表單欄位
   const comps = getAllUsersCompetitors();
-  const setup = getIntelSetup();
+  const oldSetup = getIntelSetup();
+  // 用全新的 setup 物件重建，確保 key 統一用 bl_名稱 格式（BROKER_LIST 內的券商）
+  // 這樣一般使用者用 bl_ key 查找時一定能找到
+  const newSetup = {};
   comps.forEach(c => {
-    if (!setup[c.id]) setup[c.id] = {};
-    setup[c.id].alertsRss   = document.getElementById('setup_rss_' + c.id)?.value.trim() || '';
-    setup[c.id].ytChannelId = document.getElementById('setup_yt_'  + c.id)?.value.trim() || '';
-    setup[c.id].websiteUrl  = document.getElementById('setup_web_' + c.id)?.value.trim() || '';
+    // 統一 key：BROKER_LIST 內的券商一律用 bl_名稱，其餘保留原 id
+    const saveKey = BROKER_LIST.some(b => b.name === c.name) ? 'bl_' + c.name : c.id;
+    const rss = document.getElementById('setup_rss_' + c.id)?.value.trim() || '';
+    const yt  = document.getElementById('setup_yt_'  + c.id)?.value.trim() || '';
+    const web = document.getElementById('setup_web_' + c.id)?.value.trim() || '';
+    if (rss || yt || web) {
+      newSetup[saveKey] = { alertsRss: rss, ytChannelId: yt, websiteUrl: web };
+    }
   });
-  saveIntelSetup(setup);
+  saveIntelSetup(newSetup);
   DB.set('intel_setup_locked', true);
   showToast('✅ 情報來源設定已儲存並鎖定，同步至雲端', 'success');
   renderIntelSetupTab();
