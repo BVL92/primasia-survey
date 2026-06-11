@@ -798,10 +798,10 @@ function openProjectForm(projectId){
     <div class="section-ttl" style="margin-top:4px">題目設定</div>
 
     <div class="upload-area" onclick="document.getElementById('txtUpload').click()">
-      <div class="upload-icon">📄</div>
-      <div class="upload-txt">點此上傳 TXT 題目檔匯入</div>
-      <div class="upload-sub">格式：以空行分隔每題，第一行 #single 或 #multi，第二行題目文字，後續每行一個選項<br>例：<br>#single<br>您的投資經驗？<br>1年以下<br>1–5年<br>5年以上</div>
-      <input type="file" id="txtUpload" accept=".txt" style="display:none" onchange="parseTxtUpload(this)">
+      <div class="upload-icon">📂</div>
+      <div class="upload-txt">點此上傳題目檔匯入</div>
+      <div class="upload-sub">支援 <strong>TXT、Word (.docx)、PDF</strong> 三種格式<br>格式：以空行分隔每題，第一行 #single 或 #multi，第二行題目文字，後續每行一個選項<br><span style="color:var(--g400)">例：#single ／ 您的投資經驗？ ／ 1年以下 ／ 1–5年 ／ 5年以上</span></div>
+      <input type="file" id="txtUpload" accept=".txt,.docx,.pdf" style="display:none" onchange="parseTxtUpload(this)">
     </div>
 
     <div class="q-editor">
@@ -872,19 +872,74 @@ function updateQNums(){
   if(lbl)lbl.textContent=`${document.querySelectorAll('#qList .q-item').length} 題`;
 }
 
-function parseTxtUpload(input){
+function loadScript(src){
+  return new Promise((res,rej)=>{
+    if(document.querySelector(`script[src="${src}"]`)){res();return;}
+    const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('載入失敗：'+src));
+    document.head.appendChild(s);
+  });
+}
+
+function importParsedQuestions(text){
+  const qs=parseTxtQuestions(text);
+  if(qs.length===0){alert('無法解析題目。\n請確認格式：每題以空行分隔，第一行 #single 或 #multi，第二行題目文字，後續每行一個選項。');return;}
+  document.getElementById('qList').innerHTML='';qEditorCount=0;
+  qs.forEach(q=>addQuestion(q));
+  alert(`成功匯入 ${qs.length} 題`);
+}
+
+async function extractPdfText(arrayBuffer){
+  const WORKER='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  pdfjsLib.GlobalWorkerOptions.workerSrc=WORKER;
+  const pdf=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+  const allLines=[];
+  for(let pn=1;pn<=pdf.numPages;pn++){
+    const page=await pdf.getPage(pn);
+    const content=await page.getTextContent();
+    const rows={};
+    content.items.forEach(item=>{
+      const y=Math.round(item.transform[5]);
+      if(!rows[y])rows[y]=[];
+      rows[y].push({x:item.transform[4],str:item.str});
+    });
+    const ys=Object.keys(rows).map(Number).sort((a,b)=>b-a);
+    let prevY=null;
+    ys.forEach(y=>{
+      if(prevY!==null&&prevY-y>18)allLines.push('');
+      const txt=rows[y].sort((a,b)=>a.x-b.x).map(i=>i.str).join('').trim();
+      if(txt)allLines.push(txt);
+      prevY=y;
+    });
+    allLines.push('');
+  }
+  return allLines.join('\n');
+}
+
+async function parseTxtUpload(input){
   const file=input.files[0];if(!file)return;
-  const reader=new FileReader();
-  reader.onload=e=>{
-    const text=e.target.result;
-    const qs=parseTxtQuestions(text);
-    if(qs.length===0){alert('無法解析題目，請確認格式（每題以空行分隔，第一行為 #single 或 #multi）');return;}
-    document.getElementById('qList').innerHTML='';qEditorCount=0;
-    qs.forEach(q=>addQuestion(q));
-    alert(`成功匯入 ${qs.length} 題`);
-  };
-  reader.readAsText(file,'UTF-8');
   input.value='';
+  const ext=file.name.split('.').pop().toLowerCase();
+  if(ext==='txt'){
+    const reader=new FileReader();
+    reader.onload=e=>importParsedQuestions(e.target.result);
+    reader.readAsText(file,'UTF-8');
+  }else if(ext==='docx'){
+    try{
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js');
+      const buf=await file.arrayBuffer();
+      const result=await mammoth.extractRawValue({arrayBuffer:buf});
+      importParsedQuestions(result.value);
+    }catch(e){alert('Word 檔解析失敗：'+e.message);}
+  }else if(ext==='pdf'){
+    try{
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+      const buf=await file.arrayBuffer();
+      const text=await extractPdfText(buf);
+      importParsedQuestions(text);
+    }catch(e){alert('PDF 解析失敗：'+e.message);}
+  }else{
+    alert('不支援的檔案格式，請上傳 TXT、Word (.docx) 或 PDF 檔案。');
+  }
 }
 
 function parseTxtQuestions(text){
