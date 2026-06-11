@@ -290,6 +290,7 @@ tr:hover td{background:var(--g50);}
         <span id="activeProjBadge" class="proj-active-badge">▶ 執行中</span>
         <span class="info-txt" id="refreshTime"></span>
       </div>
+      <div id="currentProjBanner" style="display:none;margin:-8px 0 16px;padding:9px 16px;background:var(--navy-pale);border-radius:8px;border-left:3px solid var(--navy);font-size:13px;color:var(--navy);"></div>
 
       <!-- Actions -->
       <div class="actions-bar">
@@ -332,6 +333,7 @@ tr:hover td{background:var(--g50);}
     <div class="main">
       <div class="actions-bar">
         <button class="btn-primary" onclick="openProjectForm(null)">＋ 新增問卷專案</button>
+        <button class="btn-ghost" onclick="createLegacyProject()">📥 匯入舊版問卷專案</button>
         <button class="btn-ghost" onclick="renderProjectsTab()">🔄 重新整理</button>
       </div>
 
@@ -415,8 +417,11 @@ async function loadProjects(){
 }
 
 async function loadProjectResponses(projectId){
+  const p=allProjects[projectId];
   try{
-    const snap=await db.collection('projects').doc(projectId).collection('responses').get();
+    const snap=p?.isLegacy
+      ?await db.collection('surveys').get()
+      :await db.collection('projects').doc(projectId).collection('responses').get();
     const users={};
     snap.forEach(doc=>{users[doc.id]=doc.data();});
     return{users};
@@ -481,6 +486,16 @@ function updateProjectSelector(){
   sel.value=cur;
   const badge=document.getElementById('activeProjBadge');
   badge.style.display=(currentStatsProjectId&&allProjects[currentStatsProjectId]?.status==='active')?'inline-flex':'none';
+  const banner=document.getElementById('currentProjBanner');
+  if(banner){
+    banner.style.display='block';
+    if(currentStatsProjectId&&allProjects[currentStatsProjectId]){
+      const p=allProjects[currentStatsProjectId];
+      banner.innerHTML=`📊 目前查看：<strong>${escHtml(p.name)}</strong>&ensp;📅 ${p.startDate} ～ ${p.endDate}`;
+    }else{
+      banner.innerHTML='📊 目前查看：<strong>舊版問卷資料</strong>（surveys 集合）';
+    }
+  }
 }
 
 function onStatsProjChange(){
@@ -669,7 +684,9 @@ async function renderProjectsTab(){
   const cards=await Promise.all(projects.map(async p=>{
     let total=0,completed=0,inprog=0;
     try{
-      const snap=await db.collection('projects').doc(p.id).collection('responses').get();
+      const snap=p.isLegacy
+        ?await db.collection('surveys').get()
+        :await db.collection('projects').doc(p.id).collection('responses').get();
       total=snap.size;
       const qLen=p.totalQuestions||p.questions?.length||5;
       snap.forEach(doc=>{
@@ -734,6 +751,35 @@ function viewProjectStats(projectId){
   currentStatsProjectId=projectId;
   switchTab('stats');
   renderDashboard();
+}
+
+async function createLegacyProject(){
+  await loadProjects();
+  if(Object.values(allProjects).find(p=>p.isLegacy)){
+    alert('舊版問卷專案已存在，無需重複建立。');
+    return;
+  }
+  const legacyQuestions=[
+    {type:'multi',q:'您目前投資的理財商品有哪些？',opts:['台股、美股','海內外基金 / ETF','債券 / 結構型商品','其他（期貨、加密貨幣等）']},
+    {type:'single',q:'您每月可支配投資金額約為？',opts:['新台幣 50 萬元以下','新台幣 51 萬元以上']},
+    {type:'multi',q:'您希望犇亞新增哪些服務功能？',opts:['海外股票 / 基金投資','當沖 / 借券 / 智慧單交易','AI 智能投資組合建議','定期投資報告 / 風險提醒']},
+    {type:'single',q:'您是否有意願參加投資理財講座？',opts:['有興趣，願意參加','目前沒有意願']},
+    {type:'single',q:'您偏好講座舉辦的時段是？',opts:['平日','假日']},
+  ];
+  const data={
+    name:'犇亞投資調查 (舊版)',
+    startDate:'2026-05-20',endDate:'2026-06-10',
+    status:'ended',answerMode:'one-per-login',
+    isLegacy:true,questions:legacyQuestions,totalQuestions:5,
+    excludeSlots:[],
+    createdAt:'2026-05-20T00:00:00.000Z',
+    updatedAt:new Date().toISOString(),
+  };
+  try{
+    await db.collection('projects').add(data);
+    alert('舊版問卷專案已建立！統計資料將自動讀取 surveys 集合。');
+    renderProjectsTab();
+  }catch(e){alert('建立失敗：'+e.message);}
 }
 
 // ── PROJECT FORM ──
