@@ -10,7 +10,7 @@
 <script>
 // Force reload when a new version is deployed
 (function(){
-  var V='20260611-3';
+  var V='20260611-6';
   if(localStorage.getItem('_sv')!==V){
     localStorage.setItem('_sv',V);
     if(!location.search.includes('_r=')){
@@ -578,6 +578,20 @@ async function doLogin(){
   // 載入執行中專案（決定題目內容及作答方式）
   await loadActiveProject();
   const questions=getQuestions();
+
+  // 從 Firestore 載入個人進度（含大小寫 key 向下相容）
+  try{
+    const col=responsesCol();
+    let fsSnap=await col.doc(id).get();
+    if(!fsSnap.exists) fsSnap=await col.doc(id.toUpperCase()).get();
+    if(fsSnap.exists){
+      const fsData=fsSnap.data();
+      const d=loadData();
+      if(!d.users[id]||(fsData.progress||0)>(d.users[id].progress||0)){
+        d.users[id]=fsData;saveData(d);
+      }
+    }
+  }catch(e){}
 
   const u=getUser(id);u.loginCount=(u.loginCount||0)+1;u.lastLogin=new Date().toISOString();
   if(u.progress>=questions.length){
