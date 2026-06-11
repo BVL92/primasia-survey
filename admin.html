@@ -1128,13 +1128,19 @@ async function renderAccountsTab(){
     if(r.progress>0)return{status:'prog',progress:r.progress};
     return{status:'idle',progress:0};
   }
+  // Built-in accounts that were soft-deleted by admin (stored in Firestore with disabled:true)
+  const disabledBuiltins=new Set(
+    Object.entries(fsAccounts).filter(([,d])=>d.disabled===true).map(([,d])=>(d.displayId||'').toLowerCase())
+  );
   const builtinLower=new Set(BUILTIN_IDS.map(id=>id.toLowerCase()));
   const rows=[];
   BUILTIN_IDS.forEach(id=>{
+    if(disabledBuiltins.has(id.toLowerCase()))return;
     const {status,progress}=getStatus(id);
     rows.push({id,source:'builtin',status,progress,createdAt:null,docId:null});
   });
   Object.entries(fsAccounts).forEach(([docId,data])=>{
+    if(data.disabled)return;
     const displayId=data.displayId||docId;
     if(!builtinLower.has(displayId.toLowerCase())){
       const {status,progress}=getStatus(displayId);
@@ -1150,7 +1156,6 @@ async function renderAccountsTab(){
   const done=rows.filter(r=>r.status==='done').length;
   const prog=rows.filter(r=>r.status==='prog').length;
   const idle=rows.filter(r=>r.status==='idle').length;
-  const fsCount=rows.filter(r=>r.source==='firestore').length;
   const trHtml=rows.map(a=>{
     let badge='';
     if(!activeProj)badge='<span style="color:var(--g400);font-size:12px">—</span>';
@@ -1161,19 +1166,17 @@ async function renderAccountsTab(){
     const crTxt=a.source==='builtin'
       ?'<span style="color:var(--g400);font-size:11px">內建帳號</span>'
       :(a.createdAt?a.createdAt.substring(0,10):'—');
-    const actBtn=a.source==='builtin'
-      ?'<span style="color:var(--g200);font-size:11px">內建</span>'
-      :`<button class="btn-sm danger" onclick="deleteAccount('${escAttr(a.docId||a.id)}','${escAttr(a.id)}')">🗑 刪除</button>`;
-    const chkCell=a.source==='builtin'
-      ?'<td style="padding:10px 8px 10px 14px"><input type="checkbox" disabled style="opacity:.25;cursor:not-allowed"></td>'
-      :`<td style="padding:10px 8px 10px 14px"><input type="checkbox" class="acc-chk" value="${escAttr(a.docId||a.id)}" data-id="${escAttr(a.id)}" onchange="updateAccBulkBar()"></td>`;
+    const chkVal=a.source==='builtin'?escAttr(a.id.toLowerCase()):escAttr(a.docId||a.id.toLowerCase());
+    const delFn=a.source==='builtin'
+      ?`deleteAccount('','${escAttr(a.id)}',true)`
+      :`deleteAccount('${escAttr(a.docId||a.id)}','${escAttr(a.id)}',false)`;
     return`<tr style="border-bottom:1px solid var(--g100)">
-      ${chkCell}
+      <td style="padding:10px 8px 10px 14px"><input type="checkbox" class="acc-chk" value="${chkVal}" data-id="${escAttr(a.id)}" data-builtin="${a.source==='builtin'}" onchange="updateAccBulkBar()"></td>
       <td style="padding:10px 12px;font-family:monospace;font-size:13px">${escHtml(a.id)}</td>
       <td style="padding:10px 12px">${badge}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--g600)">${progTxt}</td>
       <td style="padding:10px 12px;font-size:12px;color:var(--g600)">${crTxt}</td>
-      <td style="padding:10px 12px">${actBtn}</td>
+      <td style="padding:10px 12px"><button class="btn-sm danger" onclick="${delFn}">🗑 刪除</button></td>
     </tr>`;
   }).join('');
   container.innerHTML=`
@@ -1193,7 +1196,7 @@ async function renderAccountsTab(){
     <table style="width:100%;border-collapse:collapse">
       <thead>
         <tr style="border-bottom:2px solid var(--g100)">
-          <th style="padding:10px 8px 10px 14px;width:36px">${fsCount>0?'<input type="checkbox" id="accSelectAll" title="全選可刪除帳號" onclick="toggleSelectAllAccounts()">':''}</th>
+          <th style="padding:10px 8px 10px 14px;width:36px"><input type="checkbox" id="accSelectAll" title="全選" onclick="toggleSelectAllAccounts()"></th>
           <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;color:var(--g600);white-space:nowrap">帳號 ID</th>
           <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;color:var(--g600);white-space:nowrap">問卷狀態</th>
           <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;color:var(--g600);white-space:nowrap">完成進度</th>
@@ -1229,10 +1232,16 @@ async function addAccount(){
   }catch(e){alert('新增失敗：'+e.message);}
 }
 
-async function deleteAccount(docId,displayId){
+async function deleteAccount(docId,displayId,isBuiltin){
   if(!confirm(`確定刪除帳號「${displayId}」？\n此操作無法還原。`))return;
   try{
-    await db.collection('accounts').doc(docId).delete();
+    if(isBuiltin){
+      await db.collection('accounts').doc(displayId.toLowerCase()).set({
+        disabled:true,displayId:displayId,deletedAt:new Date().toISOString()
+      });
+    }else{
+      await db.collection('accounts').doc(docId).delete();
+    }
     renderAccountsTab();
   }catch(e){alert('刪除失敗：'+e.message);}
 }
@@ -1271,7 +1280,16 @@ async function bulkDeleteAccounts(){
   if(!confirm(`確定刪除以下 ${checked.length} 個帳號？\n\n${names}\n\n此操作無法還原。`))return;
   try{
     const batch=db.batch();
-    checked.forEach(c=>batch.delete(db.collection('accounts').doc(c.value)));
+    const now=new Date().toISOString();
+    checked.forEach(c=>{
+      if(c.dataset.builtin==='true'){
+        batch.set(db.collection('accounts').doc(c.value),{
+          disabled:true,displayId:c.dataset.id,deletedAt:now
+        });
+      }else{
+        batch.delete(db.collection('accounts').doc(c.value));
+      }
+    });
     await batch.commit();
     renderAccountsTab();
   }catch(e){alert('刪除失敗：'+e.message);}

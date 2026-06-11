@@ -10,7 +10,7 @@
 <script>
 // Force reload when a new version is deployed
 (function(){
-  var V='20260611-8';
+  var V='20260611-9';
   if(localStorage.getItem('_sv')!==V){
     localStorage.setItem('_sv',V);
     if(!location.search.includes('_r=')){
@@ -424,14 +424,19 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const db = firebase.firestore();
 
 const STORE_KEY='primasia_inv_survey';
-let dynamicCreds={};  // Firestore-managed accounts (loaded on page init)
+let dynamicCreds={};           // Firestore-managed accounts (loaded on page init)
+let disabledAccounts=new Set(); // admin soft-deleted built-in accounts
 async function loadDynamicAccounts(){
   try{
     const snap=await db.collection('accounts').get();
     snap.forEach(doc=>{
       const data=doc.data();
       const displayId=data.displayId||doc.id;
-      dynamicCreds[displayId]=data.password;
+      if(data.disabled){
+        disabledAccounts.add(displayId.toLowerCase());
+      }else{
+        dynamicCreds[displayId]=data.password;
+      }
     });
   }catch(e){}
 }
@@ -502,9 +507,10 @@ function setUser(id,u){
   const d=loadData();d.users[id]=u;saveData(d);
   const col=responsesCol();
   col.doc(id).set(u).catch(e=>console.warn('雲端儲存失敗:',e));
-  // Remove stale uppercase variant to prevent duplicate records
+  // Remove stale case variants to prevent duplicate records in stats
   if(id!==id.toUpperCase()) col.doc(id.toUpperCase()).delete().catch(()=>{});
-  if(allUsersCache){allUsersCache.users[id]=u;delete allUsersCache.users[id.toUpperCase()];}
+  if(id!==id.toLowerCase()) col.doc(id.toLowerCase()).delete().catch(()=>{});
+  if(allUsersCache){allUsersCache.users[id]=u;delete allUsersCache.users[id.toUpperCase()];delete allUsersCache.users[id.toLowerCase()];}
 }
 
 // 從 Firestore 載入執行中的問卷專案
@@ -586,6 +592,8 @@ async function doLogin(){
   const inputId=document.getElementById('loginId').value.trim();
   const pw=document.getElementById('loginPwd').value;
   const err=document.getElementById('loginErr');
+  // Reject accounts disabled by admin
+  if(disabledAccounts.has(inputId.toLowerCase())){err.style.display='block';return;}
   // Case-insensitive lookup: check hardcoded CREDS first, then Firestore-managed accounts
   let id=Object.keys(CREDS).find(k=>k.toLowerCase()===inputId.toLowerCase());
   let credPw=id?CREDS[id]:null;
@@ -600,16 +608,17 @@ async function doLogin(){
   await loadActiveProject();
   const questions=getQuestions();
 
-  // 從 Firestore 載入個人進度（比較小寫/大寫兩個 doc，取進度較大者）
+  // 從 Firestore 載入個人進度（同時比較 canonical 與小寫 doc，取進度較大者）
   try{
     const col=responsesCol();
-    const [lowerSnap,upperSnap]=await Promise.all([
+    const idLower=id.toLowerCase();
+    const [canonSnap,altSnap]=await Promise.all([
       col.doc(id).get(),
-      col.doc(id.toUpperCase()).get()
+      idLower!==id?col.doc(idLower).get():Promise.resolve({exists:false,data:()=>null})
     ]);
-    const lowerProg=lowerSnap.exists?(lowerSnap.data().progress||0):0;
-    const upperProg=upperSnap.exists?(upperSnap.data().progress||0):0;
-    const bestSnap=upperProg>lowerProg?upperSnap:(lowerSnap.exists?lowerSnap:null);
+    const canonProg=canonSnap.exists?(canonSnap.data().progress||0):0;
+    const altProg=altSnap.exists?(altSnap.data().progress||0):0;
+    const bestSnap=altProg>canonProg?altSnap:(canonSnap.exists?canonSnap:null);
     if(bestSnap){
       const fsData=bestSnap.data();
       const d=loadData();
