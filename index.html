@@ -449,24 +449,54 @@ const Q_SEG = [
 ];
 
 let currentUser=null,selectedOpts=[];
-let allUsersCache=null; // Firestore 所有用戶資料快取（用於分佈統計）
+let allUsersCache=null;
+let activeProject=null; // 目前執行中的問卷專案（從 Firestore projects 集合載入）
 
 function loadData(){try{return JSON.parse(localStorage.getItem(STORE_KEY))||{users:{}};}catch(e){return{users:{}};}}
 function saveData(d){localStorage.setItem(STORE_KEY,JSON.stringify(d));}
 function getUser(id){const d=loadData();if(!d.users[id])d.users[id]={progress:0,answers:{},dismissedUntil:null,completedAt:null,firstLogin:new Date().toISOString(),loginCount:0};return d.users[id];}
+
+// 取得當前應使用的題目（專案題目優先，否則 fallback 至硬編碼 QUESTIONS）
+function getQuestions(){return(activeProject?.questions?.length>0)?activeProject.questions:QUESTIONS;}
+
+// 取得回應寫入的 Firestore collection ref
+function responsesCol(){
+  return activeProject
+    ?db.collection('projects').doc(activeProject.id).collection('responses')
+    :db.collection('surveys');
+}
+
 function setUser(id,u){
-  // 1. 本機 localStorage（離線備份）
   const d=loadData();d.users[id]=u;saveData(d);
-  // 2. 同步寫入 Firebase Firestore（集中收集）
-  db.collection('surveys').doc(id).set(u).catch(e=>console.warn('雲端儲存失敗:',e));
-  // 3. 更新本地快取，讓後續題目的分佈統計即時反映自己的回答
+  responsesCol().doc(id).set(u).catch(e=>console.warn('雲端儲存失敗:',e));
   if(allUsersCache) allUsersCache.users[id]=u;
 }
 
+// 從 Firestore 載入執行中的問卷專案
+async function loadActiveProject(){
+  try{
+    const snap=await db.collection('projects').where('status','==','active').get();
+    if(!snap.empty){
+      const now=new Date();
+      for(const doc of snap.docs){
+        const p=doc.data();
+        const start=new Date(p.startDate);
+        const end=new Date(p.endDate+'T23:59:59');
+        if(now>=start&&now<=end){
+          activeProject={id:doc.id,...p};
+          return activeProject;
+        }
+      }
+    }
+  }catch(e){console.warn('無法載入問卷專案，使用預設題目:',e);}
+  activeProject=null;
+  return null;
+}
+
 function getDistribution(qi){
-  // 優先使用 Firestore 快取（含所有測試者資料），否則退回本機 localStorage
   const data=allUsersCache||loadData();
-  const q=QUESTIONS[qi];
+  const q=getQuestions()[qi];
+  if(!q)return{counts:{},responders:0};
   const counts={};q.opts.forEach(o=>counts[o]=0);let responders=0;
   Object.values(data.users).forEach(u=>{
     if(u.answers&&u.answers[qi]!==undefined){
@@ -511,10 +541,14 @@ async function doLogin(){
   const err=document.getElementById('loginErr');
   if(!CREDS[id]||CREDS[id]!==pw){err.style.display='block';return;}
   err.style.display='none';currentUser=id;
+
+  // 載入執行中專案（決定題目內容及作答方式）
+  await loadActiveProject();
+  const questions=getQuestions();
+
   const u=getUser(id);u.loginCount=(u.loginCount||0)+1;u.lastLogin=new Date().toISOString();
-  if(u.progress>=QUESTIONS.length){
+  if(u.progress>=questions.length){
     setUser(id,u);
-    // 【串接點 A】已完成過問卷的用戶登入 → 通知 APP 關閉 WebView
     notifyNative('SURVEY_ALREADY_DONE',{userId:id,completedAt:u.completedAt||null});
     return;
   }
@@ -529,12 +563,12 @@ async function doLogin(){
   }
   // 從 Firestore 預載所有用戶回答，供分佈統計使用
   try{
-    const snap=await db.collection('surveys').get();
+    const snap=await responsesCol().get();
     const users={};
     snap.forEach(doc=>{users[doc.id]=doc.data();});
     allUsersCache={users};
   }catch(e){
-    allUsersCache=loadData(); // 備援：使用本機資料
+    allUsersCache=loadData();
   }
   setUser(id,u);renderSurvey(u.progress);showView('surveyView');
 }
@@ -542,12 +576,13 @@ document.getElementById('loginId').addEventListener('keydown',e=>{if(e.key==='En
 document.getElementById('loginPwd').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 
 function renderSurvey(qi){
-  const q=QUESTIONS[qi];selectedOpts=[];
-  const palette=Q_PALETTE[qi];
-  const segColors=Q_SEG[qi];
+  const questions=getQuestions();
+  const q=questions[qi];selectedOpts=[];
+  const palette=Q_PALETTE[qi%Q_PALETTE.length];
+  const segColors=Q_SEG[qi%Q_SEG.length];
 
   // Dots
-  document.getElementById('dotNav').innerHTML=QUESTIONS.map((_,i)=>{
+  document.getElementById('dotNav').innerHTML=questions.map((_,i)=>{
     let c='dot';if(i<qi)c+=' done';if(i===qi)c+=' active';return `<div class="${c}"></div>`;
   }).join('');
 
@@ -612,24 +647,30 @@ function toggleOpt(btn,type){
 
 function submitAnswer(){
   if(!selectedOpts.length)return;
-  const u=getUser(currentUser);const q=QUESTIONS[u.progress];
+  const questions=getQuestions();
+  const u=getUser(currentUser);const q=questions[u.progress];
   const ans=q.type==='multi'?[...selectedOpts]:selectedOpts[0];
   u.answers[u.progress]=ans;u.progress++;
 
-  // ── Q4（index 3）答「目前沒有意願」→ 跳過 Q5，直接結束 ──
-  if(u.progress===4 && ans==='目前沒有意願'){
-    u.progress=QUESTIONS.length; // 跳到最後，標記完成
+  // 舊版相容：Q4（index 3）答「目前沒有意願」→ 跳過 Q5，直接結束
+  if(u.progress===4&&ans==='目前沒有意願'&&questions.length===5){
+    u.progress=questions.length;
   }
 
-  if(u.progress>=QUESTIONS.length){
+  if(u.progress>=questions.length){
     u.completedAt=new Date().toISOString();
     setUser(currentUser,u);
-    // 【串接點 B】問卷全部完成 → 通知 APP 關閉 WebView
     notifyNative('SURVEY_COMPLETED',{userId:currentUser,completedAt:u.completedAt});
-    setTimeout(backToLogin,400); // 短暫延遲確保通知送出
+    setTimeout(backToLogin,400);
   }else{
     setUser(currentUser,u);
-    backToLogin();
+    // 作答方式：一次全答 → 繼續下一題；每次答1題 → 回登入頁
+    const mode=activeProject?.answerMode||'one-per-login';
+    if(mode==='all-at-once'){
+      renderSurvey(u.progress);
+    }else{
+      backToLogin();
+    }
   }
 }
 
