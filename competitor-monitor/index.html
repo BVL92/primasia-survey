@@ -622,7 +622,7 @@
           <table id="usersTable">
             <thead>
               <tr>
-                <th>帳號</th><th>姓名</th><th>Email</th><th>角色</th><th>狀態</th><th>使用期間</th><th>建立日期</th><th>最後登入</th><th>操作</th>
+                <th>帳號</th><th>姓名</th><th>Email</th><th>角色</th><th>狀態</th><th>使用期間</th><th>登入次數</th><th>累計使用時間</th><th>最後登入</th><th>操作</th>
               </tr>
             </thead>
             <tbody id="usersTableBody"></tbody>
@@ -1050,6 +1050,16 @@ function initData() {
 // ═══════════════════════════════════════════════════════════
 let currentUser = null;
 let sessionLogId = null;
+let sessionStartTs = null;
+
+function fmtDuration(sec) {
+  if (!sec) return '—';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (h > 0) return h + ' 時 ' + m + ' 分';
+  if (m > 0) return m + ' 分';
+  return sec + ' 秒';
+}
 
 function doLogin() {
   const u = document.getElementById('loginUser').value.trim();
@@ -1095,9 +1105,12 @@ function doLogin() {
     errEl.style.display = 'block'; return;
   }
   currentUser = user;
-  // Update lastLogin
+  // Update lastLogin, loginCount; record session start for duration tracking
+  sessionStartTs = Date.now();
   const allUsers = DB.get('users', []);
-  const updated = allUsers.map(x => x.id === user.id ? { ...x, lastLogin: now() } : x);
+  const updated = allUsers.map(x => x.id === user.id
+    ? { ...x, lastLogin: now(), loginCount: (x.loginCount||0) + 1 }
+    : x);
   DB.set('users', updated);
   // Log session
   const log = { id:'l'+Date.now(), userId:user.id, username:user.username, displayName:user.displayName, loginAt:now(), logoutAt:null, device:navigator.userAgent.substring(0,80), ip:'192.168.'+rnd(1,254)+'.'+rnd(1,254) };
@@ -1109,6 +1122,16 @@ function doLogin() {
 }
 
 function doLogout() {
+  // Accumulate session duration to user's totalLoginSec
+  if (currentUser && sessionStartTs) {
+    const secThisSession = Math.floor((Date.now() - sessionStartTs) / 1000);
+    const allUsers = DB.get('users', []);
+    const updated = allUsers.map(x => x.id === currentUser.id
+      ? { ...x, totalLoginSec: (x.totalLoginSec||0) + secThisSession }
+      : x);
+    DB.set('users', updated);
+  }
+  sessionStartTs = null;
   // Close log
   const logs = DB.get('loginLogs', []);
   const idx = logs.findIndex(l => l.id === sessionLogId);
@@ -3722,7 +3745,8 @@ function renderUsers() {
       <td><span class="pill ${u.role==='admin'?'pill-admin':'pill-user'}">${u.role==='admin'?'管理員':'一般使用者'}</span></td>
       <td><span class="pill ${u.status==='active'?'pill-active':'pill-inactive'}">${u.status==='active'?'啟用':'停用'}</span></td>
       <td><span class="pill ${vpill}" style="font-size:11px">${vlabel}</span></td>
-      <td>${u.createdAt}</td>
+      <td style="text-align:center">${u.loginCount||0} 次</td>
+      <td style="text-align:center">${fmtDuration(u.totalLoginSec||0)}</td>
       <td>${u.lastLogin||'—'}</td>
       <td><div class="action-btns">
         <button class="btn btn-sm btn-outline" onclick="editUser('${u.id}')">編輯</button>
