@@ -466,7 +466,16 @@ let activeProject=null; // 目前執行中的問卷專案（從 Firestore projec
 
 function loadData(){try{return JSON.parse(localStorage.getItem(STORE_KEY))||{users:{}};}catch(e){return{users:{}};}}
 function saveData(d){localStorage.setItem(STORE_KEY,JSON.stringify(d));}
-function getUser(id){const d=loadData();if(!d.users[id])d.users[id]={progress:0,answers:{},dismissedUntil:null,completedAt:null,firstLogin:new Date().toISOString(),loginCount:0};return d.users[id];}
+function getUser(id){
+  const d=loadData();
+  if(!d.users[id]){
+    // Migrate data stored under a different-case key (e.g. T100000015 → t100000015)
+    const altKey=Object.keys(d.users).find(k=>k.toLowerCase()===id.toLowerCase()&&k!==id);
+    if(altKey){d.users[id]=d.users[altKey];delete d.users[altKey];saveData(d);}
+  }
+  if(!d.users[id])d.users[id]={progress:0,answers:{},dismissedUntil:null,completedAt:null,firstLogin:new Date().toISOString(),loginCount:0};
+  return d.users[id];
+}
 
 // 取得當前應使用的題目（專案題目優先，否則 fallback 至硬編碼 QUESTIONS）
 function getQuestions(){return(activeProject?.questions?.length>0)?activeProject.questions:QUESTIONS;}
