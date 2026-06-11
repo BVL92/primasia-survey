@@ -276,6 +276,7 @@ tr:hover td{background:var(--g50);}
   <div class="tab-nav">
     <button class="tab-btn active" data-tab="stats" onclick="switchTab('stats')">📊 問卷統計</button>
     <button class="tab-btn" data-tab="projects" onclick="switchTab('projects')">📁 專案管理</button>
+    <button class="tab-btn" data-tab="accounts" onclick="switchTab('accounts')">👥 帳號管理</button>
   </div>
 
   <!-- ── TAB: STATS ── -->
@@ -348,6 +349,40 @@ tr:hover td{background:var(--g50);}
     </div>
   </div>
 
+  <!-- ── TAB: ACCOUNTS ── -->
+  <div id="tab_accounts" class="tab-panel">
+    <div class="main">
+      <!-- Add account form -->
+      <div style="background:#fff;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.07),0 0 0 1px rgba(0,0,0,.04);margin-bottom:24px">
+        <div class="section-ttl">新增登入帳號</div>
+        <div class="form-row" style="align-items:flex-end">
+          <div class="form-group">
+            <label class="form-label">帳號 ID *</label>
+            <input class="form-input" id="newAccId" placeholder="如：T100000021" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label class="form-label">密碼 *</label>
+            <input class="form-input" id="newAccPw" placeholder="如：1qaz2wsx" autocomplete="new-password">
+          </div>
+          <div class="form-group" style="flex:0;min-width:auto;display:flex;align-items:flex-end">
+            <button class="btn-primary" onclick="addAccount()">＋ 新增帳號</button>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--g400);margin-top:6px">新增的帳號儲存於雲端，前台登入時會自動載入。內建帳號請洽系統管理員修改原始碼。</div>
+      </div>
+      <!-- Account list -->
+      <div style="background:#fff;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.07),0 0 0 1px rgba(0,0,0,.04)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <div class="section-ttl" style="margin:0">帳號列表</div>
+          <button class="btn-ghost" onclick="renderAccountsTab()">🔄 重新整理</button>
+        </div>
+        <div id="accountList">
+          <div style="color:var(--g400);font-size:13px;padding:8px 0">載入中…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="dash-foot">© 2026 犇亞證券投資股份有限公司 PRIMASIA Securities ｜ 後台管理系統</div>
 </div>
 
@@ -404,6 +439,7 @@ function switchTab(name){
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.id===`tab_${name}`));
   if(name==='projects') renderProjectsTab();
+  if(name==='accounts') renderAccountsTab();
 }
 
 // ── PROJECTS FIRESTORE ──
@@ -1050,6 +1086,144 @@ async function submitProjectForm(){
     await loadProjects();
     renderProjectsTab();
   }catch(e){alert('儲存失敗：'+e.message);}
+}
+
+// ── ACCOUNTS ──
+const BUILTIN_IDS=['Y123123113','A100000001','B200000002','C300000003','D400000004',
+  'T100000001','T100000002','T100000003','T100000004','T100000005','T100000006',
+  'T100000007','T100000008','T100000009','T100000010','T100000011','T100000012',
+  'T100000013','T100000014','T100000015','T100000016','T100000017','T100000018',
+  'T100000019','T100000020','vincentlee','jameslin','markliu','glorychen','frankycho',
+  'yclam','stephentung','peterlee','tomkang','chloechou','lyndalee','cclee',
+  'haoyunlee','sophiayu','ritachlou','hankslin','michellenien','victorpan',
+  'dennischiang','mingchanglin','terrykuo','carriewang','barrychen','kathysha',
+  'neoyao','nicolehong','juliashih','chienchihchen'];
+
+async function renderAccountsTab(){
+  const container=document.getElementById('accountList');
+  container.innerHTML='<div style="color:var(--g400);font-size:13px;padding:8px 0">載入中…</div>';
+  // Load Firestore-managed accounts
+  let fsAccounts={};
+  try{
+    const snap=await db.collection('accounts').get();
+    snap.forEach(doc=>{fsAccounts[doc.id]={...doc.data()};});
+  }catch(e){}
+  // Load active project + responses
+  await loadProjects();
+  const activeProj=Object.values(allProjects).find(p=>p.status==='active');
+  let responses={};let activeQLen=0;
+  if(activeProj){
+    activeQLen=activeProj.totalQuestions||activeProj.questions?.length||0;
+    try{
+      const snap=activeProj.isLegacy
+        ?await db.collection('surveys').get()
+        :await db.collection('projects').doc(activeProj.id).collection('responses').get();
+      snap.forEach(doc=>{responses[doc.id.toLowerCase()]=doc.data();});
+    }catch(e){}
+  }
+  function getStatus(id){
+    const r=responses[id.toLowerCase()]||null;
+    if(!r)return{status:'idle',progress:0};
+    if(activeQLen>0&&r.progress>=activeQLen)return{status:'done',progress:r.progress};
+    if(r.progress>0)return{status:'prog',progress:r.progress};
+    return{status:'idle',progress:0};
+  }
+  const builtinLower=new Set(BUILTIN_IDS.map(id=>id.toLowerCase()));
+  const rows=[];
+  BUILTIN_IDS.forEach(id=>{
+    const {status,progress}=getStatus(id);
+    rows.push({id,source:'builtin',status,progress,createdAt:null,docId:null});
+  });
+  Object.entries(fsAccounts).forEach(([docId,data])=>{
+    const displayId=data.displayId||docId;
+    if(!builtinLower.has(displayId.toLowerCase())){
+      const {status,progress}=getStatus(displayId);
+      rows.push({id:displayId,source:'firestore',status,progress,createdAt:data.createdAt||null,docId});
+    }
+  });
+  if(rows.length===0){
+    container.innerHTML='<div style="color:var(--g400);padding:24px;text-align:center">尚無帳號資料</div>';
+    return;
+  }
+  const projName=activeProj?escHtml(activeProj.name):'（無執行中專案）';
+  const total=rows.length;
+  const done=rows.filter(r=>r.status==='done').length;
+  const prog=rows.filter(r=>r.status==='prog').length;
+  const idle=rows.filter(r=>r.status==='idle').length;
+  const trHtml=rows.map(a=>{
+    let badge='';
+    if(!activeProj)badge='<span style="color:var(--g400);font-size:12px">—</span>';
+    else if(a.status==='done')badge='<span class="badge badge-done">✓ 已完成</span>';
+    else if(a.status==='prog')badge='<span class="badge badge-prog">⏳ 進行中</span>';
+    else badge='<span class="badge badge-idle">未作答</span>';
+    const progTxt=activeProj?`${a.progress}/${activeQLen}`:'—';
+    const crTxt=a.source==='builtin'
+      ?'<span style="color:var(--g400);font-size:11px">內建帳號</span>'
+      :(a.createdAt?a.createdAt.substring(0,10):'—');
+    const actBtn=a.source==='builtin'
+      ?'<span style="color:var(--g200);font-size:11px">內建</span>'
+      :`<button class="btn-sm danger" onclick="deleteAccount('${escAttr(a.docId||a.id)}','${escAttr(a.id)}')">🗑 刪除</button>`;
+    return`<tr style="border-bottom:1px solid var(--g100)">
+      <td style="padding:10px 12px;font-family:monospace;font-size:13px">${escHtml(a.id)}</td>
+      <td style="padding:10px 12px">${badge}</td>
+      <td style="padding:10px 12px;font-size:13px;color:var(--g600)">${progTxt}</td>
+      <td style="padding:10px 12px;font-size:12px;color:var(--g600)">${crTxt}</td>
+      <td style="padding:10px 12px">${actBtn}</td>
+    </tr>`;
+  }).join('');
+  container.innerHTML=`
+    <div style="font-size:12px;color:var(--g600);margin-bottom:14px;padding:10px 14px;background:var(--g50);border-radius:8px">
+      執行中專案：<strong>${projName}</strong>&emsp;
+      總帳號 <strong>${total}</strong>&emsp;
+      已完成 <strong style="color:var(--green)">${done}</strong>&emsp;
+      進行中 <strong style="color:var(--orange)">${prog}</strong>&emsp;
+      未作答 <strong style="color:var(--g600)">${idle}</strong>
+    </div>
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr style="border-bottom:2px solid var(--g100)">
+          <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;color:var(--g600);white-space:nowrap">帳號 ID</th>
+          <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;color:var(--g600);white-space:nowrap">問卷狀態</th>
+          <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;color:var(--g600);white-space:nowrap">完成進度</th>
+          <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;color:var(--g600);white-space:nowrap">建立日期</th>
+          <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;color:var(--g600);white-space:nowrap">操作</th>
+        </tr>
+      </thead>
+      <tbody>${trHtml}</tbody>
+    </table>
+    </div>`;
+}
+
+async function addAccount(){
+  const id=document.getElementById('newAccId').value.trim();
+  const pw=document.getElementById('newAccPw').value.trim();
+  if(!id){alert('請輸入帳號 ID');return;}
+  if(!pw){alert('請輸入密碼');return;}
+  if(BUILTIN_IDS.some(b=>b.toLowerCase()===id.toLowerCase())){
+    alert(`帳號「${id}」已存在於內建帳號中，無需重複新增。`);return;
+  }
+  try{
+    const doc=await db.collection('accounts').doc(id.toLowerCase()).get();
+    if(doc.exists){alert(`帳號「${id}」已存在`);return;}
+  }catch(e){}
+  try{
+    await db.collection('accounts').doc(id.toLowerCase()).set({
+      displayId:id,password:pw,createdAt:new Date().toISOString()
+    });
+    document.getElementById('newAccId').value='';
+    document.getElementById('newAccPw').value='';
+    alert(`帳號「${id}」新增成功`);
+    renderAccountsTab();
+  }catch(e){alert('新增失敗：'+e.message);}
+}
+
+async function deleteAccount(docId,displayId){
+  if(!confirm(`確定刪除帳號「${displayId}」？\n此操作無法還原。`))return;
+  try{
+    await db.collection('accounts').doc(docId).delete();
+    renderAccountsTab();
+  }catch(e){alert('刪除失敗：'+e.message);}
 }
 
 // ── HELPERS ──
