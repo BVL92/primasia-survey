@@ -489,8 +489,11 @@ function responsesCol(){
 
 function setUser(id,u){
   const d=loadData();d.users[id]=u;saveData(d);
-  responsesCol().doc(id).set(u).catch(e=>console.warn('雲端儲存失敗:',e));
-  if(allUsersCache) allUsersCache.users[id]=u;
+  const col=responsesCol();
+  col.doc(id).set(u).catch(e=>console.warn('雲端儲存失敗:',e));
+  // Remove stale uppercase variant to prevent duplicate records
+  if(id!==id.toUpperCase()) col.doc(id.toUpperCase()).delete().catch(()=>{});
+  if(allUsersCache){allUsersCache.users[id]=u;delete allUsersCache.users[id.toUpperCase()];}
 }
 
 // 從 Firestore 載入執行中的問卷專案
