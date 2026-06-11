@@ -579,13 +579,18 @@ async function doLogin(){
   await loadActiveProject();
   const questions=getQuestions();
 
-  // 從 Firestore 載入個人進度（含大小寫 key 向下相容）
+  // 從 Firestore 載入個人進度（比較小寫/大寫兩個 doc，取進度較大者）
   try{
     const col=responsesCol();
-    let fsSnap=await col.doc(id).get();
-    if(!fsSnap.exists) fsSnap=await col.doc(id.toUpperCase()).get();
-    if(fsSnap.exists){
-      const fsData=fsSnap.data();
+    const [lowerSnap,upperSnap]=await Promise.all([
+      col.doc(id).get(),
+      col.doc(id.toUpperCase()).get()
+    ]);
+    const lowerProg=lowerSnap.exists?(lowerSnap.data().progress||0):0;
+    const upperProg=upperSnap.exists?(upperSnap.data().progress||0):0;
+    const bestSnap=upperProg>lowerProg?upperSnap:(lowerSnap.exists?lowerSnap:null);
+    if(bestSnap){
+      const fsData=bestSnap.data();
       const d=loadData();
       if(!d.users[id]||(fsData.progress||0)>(d.users[id].progress||0)){
         d.users[id]=fsData;saveData(d);
