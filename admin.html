@@ -698,7 +698,7 @@ async function renderProjectsTab(){
       <div class="proj-card-left">
         <div class="proj-name">${escHtml(p.name)} <span class="badge ${statusClass}">${statusLabel}</span></div>
         <div class="proj-period">📅 ${p.startDate} ～ ${p.endDate}</div>
-        <div class="proj-mode">📌 ${qLen} 題 ｜ ${modeLabel}　建立：${p.createdAt?p.createdAt.substring(0,10):'-'}</div>
+        <div class="proj-mode">📌 ${qLen} 題 ｜ ${modeLabel}${(()=>{const ss=p.excludeSlots?.filter(s=>s.start&&s.end).map(s=>`${s.start}～${s.end}`).join('、');return ss?` ｜ 🚫 ${ss}`:''})()}　建立：${p.createdAt?p.createdAt.substring(0,10):'-'}</div>
       </div>
       <div class="proj-card-mid">
         <div class="proj-stat"><div class="proj-stat-val">${total}</div><div class="proj-stat-lbl">總登入</div></div>
@@ -768,6 +768,30 @@ function openProjectForm(projectId){
           <label class="radio-opt"><input type="radio" name="answerMode" value="one-per-login" ${p?.answerMode!=='all-at-once'?'checked':''}>每次登入答 1 題（下次登入再問下一題）</label>
           <label class="radio-opt"><input type="radio" name="answerMode" value="all-at-once" ${p?.answerMode==='all-at-once'?'checked':''}>一次全部作答完</label>
         </div>
+      </div>
+    </div>
+
+    <div class="section-ttl" style="margin-top:8px">每日排除時段 <span style="font-size:11px;font-weight:400;color:var(--g400);letter-spacing:0">（選填，最多 2 個）</span></div>
+    <div style="font-size:12px;color:var(--g600);line-height:1.65;padding:10px 14px;background:var(--g50);border-left:3px solid var(--gold);border-radius:0 8px 8px 0;margin-bottom:14px">
+      設定每日「不執行問卷」的登入時段。前台用戶在排除時段內登入時，問卷自動跳過不顯示。<br>
+      <span style="color:var(--g400)">例：開盤時段 09:00～09:30、午休時段 12:00～13:30</span>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">排除時段 1　開始時間</label>
+        <input type="time" class="form-input" id="fEx1Start" value="${escAttr(p?.excludeSlots?.[0]?.start||'')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">排除時段 1　結束時間</label>
+        <input type="time" class="form-input" id="fEx1End" value="${escAttr(p?.excludeSlots?.[0]?.end||'')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">排除時段 2　開始時間</label>
+        <input type="time" class="form-input" id="fEx2Start" value="${escAttr(p?.excludeSlots?.[1]?.start||'')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">排除時段 2　結束時間</label>
+        <input type="time" class="form-input" id="fEx2End" value="${escAttr(p?.excludeSlots?.[1]?.end||'')}">
       </div>
     </div>
 
@@ -900,7 +924,17 @@ async function submitProjectForm(){
   if(!startDate||!endDate){alert('請設定執行期間');return;}
   if(startDate>endDate){alert('結束日期不能早於開始日期');return;}
   if(questions.length===0){alert('請至少新增一道題目（每題需有題目文字及至少 2 個選項）');return;}
-  const data={name,startDate,endDate,answerMode,questions,totalQuestions:questions.length,updatedAt:new Date().toISOString()};
+  const excludeSlots=[];
+  for(let i=1;i<=2;i++){
+    const s=document.getElementById(`fEx${i}Start`).value;
+    const e=document.getElementById(`fEx${i}End`).value;
+    if(s||e){
+      if(!s||!e){alert(`排除時段 ${i}：開始與結束時間必須同時填寫`);return;}
+      if(s>=e){alert(`排除時段 ${i}：結束時間必須晚於開始時間`);return;}
+      excludeSlots.push({start:s,end:e});
+    }
+  }
+  const data={name,startDate,endDate,answerMode,questions,totalQuestions:questions.length,excludeSlots,updatedAt:new Date().toISOString()};
   try{
     if(editingProjectId){
       await db.collection('projects').doc(editingProjectId).update(data);

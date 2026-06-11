@@ -493,6 +493,18 @@ async function loadActiveProject(){
   return null;
 }
 
+function isInExclusionSlot(project){
+  if(!project?.excludeSlots?.length)return false;
+  const now=new Date();
+  const cur=now.getHours()*60+now.getMinutes();
+  return project.excludeSlots.some(slot=>{
+    if(!slot.start||!slot.end)return false;
+    const[sh,sm]=slot.start.split(':').map(Number);
+    const[eh,em]=slot.end.split(':').map(Number);
+    return cur>=sh*60+sm&&cur<eh*60+em;
+  });
+}
+
 function getDistribution(qi){
   const data=allUsersCache||loadData();
   const q=getQuestions()[qi];
@@ -560,6 +572,12 @@ async function doLogin(){
       showView('dismissedView');return;
     }
     u.dismissedUntil=null;
+  }
+  if(activeProject&&isInExclusionSlot(activeProject)){
+    setUser(id,u);
+    notifyNative('SURVEY_TIME_EXCLUDED',{userId:id,excludedAt:new Date().toISOString()});
+    currentUser=null;
+    return;
   }
   // 從 Firestore 預載所有用戶回答，供分佈統計使用
   try{
