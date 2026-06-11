@@ -474,27 +474,28 @@ async function renderDashboard(){
 
 function updateProjectSelector(){
   const sel=document.getElementById('statsProjSelect');
-  const cur=currentStatsProjectId||'';
-  sel.innerHTML='<option value="">— 舊版資料（surveys 集合）—</option>';
-  Object.values(allProjects).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).forEach(p=>{
+  sel.innerHTML='';
+  const sorted=Object.values(allProjects).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  sorted.forEach(p=>{
     const opt=document.createElement('option');
     opt.value=p.id;
     const statusLabel=p.status==='active'?'▶執行中':p.status==='ended'?'已結束':'草稿';
     opt.textContent=`[${statusLabel}] ${p.name} (${p.startDate}～${p.endDate})`;
     sel.appendChild(opt);
   });
-  sel.value=cur;
+  // Auto-select: prefer active project, else first in list
+  if(!currentStatsProjectId&&sorted.length>0){
+    const active=sorted.find(p=>p.status==='active');
+    currentStatsProjectId=(active||sorted[0]).id;
+  }
+  sel.value=currentStatsProjectId||'';
   const badge=document.getElementById('activeProjBadge');
   badge.style.display=(currentStatsProjectId&&allProjects[currentStatsProjectId]?.status==='active')?'inline-flex':'none';
   const banner=document.getElementById('currentProjBanner');
-  if(banner){
+  if(banner&&currentStatsProjectId&&allProjects[currentStatsProjectId]){
+    const p=allProjects[currentStatsProjectId];
     banner.style.display='block';
-    if(currentStatsProjectId&&allProjects[currentStatsProjectId]){
-      const p=allProjects[currentStatsProjectId];
-      banner.innerHTML=`📊 目前查看：<strong>${escHtml(p.name)}</strong>&ensp;📅 ${p.startDate} ～ ${p.endDate}`;
-    }else{
-      banner.innerHTML='📊 目前查看：<strong>舊版問卷資料</strong>（surveys 集合）';
-    }
+    banner.innerHTML=`📊 目前查看：<strong>${escHtml(p.name)}</strong>&ensp;📅 ${p.startDate} ～ ${p.endDate}`;
   }
 }
 
