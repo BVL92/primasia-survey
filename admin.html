@@ -1150,6 +1150,7 @@ async function renderAccountsTab(){
   const done=rows.filter(r=>r.status==='done').length;
   const prog=rows.filter(r=>r.status==='prog').length;
   const idle=rows.filter(r=>r.status==='idle').length;
+  const fsCount=rows.filter(r=>r.source==='firestore').length;
   const trHtml=rows.map(a=>{
     let badge='';
     if(!activeProj)badge='<span style="color:var(--g400);font-size:12px">—</span>';
@@ -1163,7 +1164,11 @@ async function renderAccountsTab(){
     const actBtn=a.source==='builtin'
       ?'<span style="color:var(--g200);font-size:11px">內建</span>'
       :`<button class="btn-sm danger" onclick="deleteAccount('${escAttr(a.docId||a.id)}','${escAttr(a.id)}')">🗑 刪除</button>`;
+    const chkCell=a.source==='builtin'
+      ?'<td style="padding:10px 8px 10px 14px"><input type="checkbox" disabled style="opacity:.25;cursor:not-allowed"></td>'
+      :`<td style="padding:10px 8px 10px 14px"><input type="checkbox" class="acc-chk" value="${escAttr(a.docId||a.id)}" data-id="${escAttr(a.id)}" onchange="updateAccBulkBar()"></td>`;
     return`<tr style="border-bottom:1px solid var(--g100)">
+      ${chkCell}
       <td style="padding:10px 12px;font-family:monospace;font-size:13px">${escHtml(a.id)}</td>
       <td style="padding:10px 12px">${badge}</td>
       <td style="padding:10px 12px;font-size:13px;color:var(--g600)">${progTxt}</td>
@@ -1179,10 +1184,16 @@ async function renderAccountsTab(){
       進行中 <strong style="color:var(--orange)">${prog}</strong>&emsp;
       未作答 <strong style="color:var(--g600)">${idle}</strong>
     </div>
+    <div id="accBulkBar" style="display:none;align-items:center;gap:10px;padding:10px 14px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;margin-bottom:12px">
+      <span id="accSelCount" style="font-size:13px;color:var(--navy);font-weight:600"></span>
+      <button class="btn-sm danger" onclick="bulkDeleteAccounts()">🗑 刪除所選帳號</button>
+      <button class="btn-sm ghost" onclick="clearAccSelection()">取消選取</button>
+    </div>
     <div style="overflow-x:auto">
     <table style="width:100%;border-collapse:collapse">
       <thead>
         <tr style="border-bottom:2px solid var(--g100)">
+          <th style="padding:10px 8px 10px 14px;width:36px">${fsCount>0?'<input type="checkbox" id="accSelectAll" title="全選可刪除帳號" onclick="toggleSelectAllAccounts()">':''}</th>
           <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;color:var(--g600);white-space:nowrap">帳號 ID</th>
           <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;color:var(--g600);white-space:nowrap">問卷狀態</th>
           <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;color:var(--g600);white-space:nowrap">完成進度</th>
@@ -1222,6 +1233,46 @@ async function deleteAccount(docId,displayId){
   if(!confirm(`確定刪除帳號「${displayId}」？\n此操作無法還原。`))return;
   try{
     await db.collection('accounts').doc(docId).delete();
+    renderAccountsTab();
+  }catch(e){alert('刪除失敗：'+e.message);}
+}
+
+function toggleSelectAllAccounts(){
+  const allChk=document.getElementById('accSelectAll');
+  document.querySelectorAll('.acc-chk:not(:disabled)').forEach(c=>c.checked=allChk.checked);
+  updateAccBulkBar();
+}
+
+function updateAccBulkBar(){
+  const checked=document.querySelectorAll('.acc-chk:checked');
+  const all=document.querySelectorAll('.acc-chk:not(:disabled)');
+  const bar=document.getElementById('accBulkBar');
+  const countEl=document.getElementById('accSelCount');
+  if(bar){bar.style.display=checked.length>0?'flex':'none';}
+  if(countEl)countEl.textContent=`已選取 ${checked.length} 個帳號`;
+  const selAll=document.getElementById('accSelectAll');
+  if(selAll){
+    selAll.indeterminate=checked.length>0&&checked.length<all.length;
+    selAll.checked=all.length>0&&checked.length===all.length;
+  }
+}
+
+function clearAccSelection(){
+  document.querySelectorAll('.acc-chk').forEach(c=>c.checked=false);
+  const selAll=document.getElementById('accSelectAll');
+  if(selAll){selAll.checked=false;selAll.indeterminate=false;}
+  updateAccBulkBar();
+}
+
+async function bulkDeleteAccounts(){
+  const checked=Array.from(document.querySelectorAll('.acc-chk:checked'));
+  if(checked.length===0)return;
+  const names=checked.map(c=>c.dataset.id).join('、');
+  if(!confirm(`確定刪除以下 ${checked.length} 個帳號？\n\n${names}\n\n此操作無法還原。`))return;
+  try{
+    const batch=db.batch();
+    checked.forEach(c=>batch.delete(db.collection('accounts').doc(c.value)));
+    await batch.commit();
     renderAccountsTab();
   }catch(e){alert('刪除失敗：'+e.message);}
 }
