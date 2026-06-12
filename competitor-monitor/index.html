@@ -253,9 +253,10 @@
   /* ── ADD ACTIVITY MODAL ── */
   .add-modal { width: 580px; }
   .add-modal .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .form-group select { width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 7px; font-size: 14px; }
-  .form-group textarea { width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 7px; font-size: 14px; resize: vertical; min-height: 80px; }
-  .form-group input { width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 7px; font-size: 14px; }
+  .form-group select { width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 7px; font-size: 14px; box-sizing: border-box; }
+  .form-group textarea { width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 7px; font-size: 14px; resize: vertical; min-height: 80px; box-sizing: border-box; }
+  .form-group input { width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 7px; font-size: 14px; box-sizing: border-box; }
+  .add-modal .form-row > .form-group { min-width: 0; }
   .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--primary-light); }
   .form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .4px; }
 
