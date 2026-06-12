@@ -1868,12 +1868,17 @@ function switchIntelTab(tab) {
   // 依分頁顯示/隱藏頂部按鈕
   const isSetup = tab === 'setup';
   const isAdkw  = tab === 'adkw';
+  const isMeta  = tab === 'meta';
   const fetchBtn  = document.getElementById('intelFetchBtn');
   const importBtn = document.getElementById('intelImportBtn');
   const exportBtn = document.getElementById('intelExportBtn');
-  if (fetchBtn)  fetchBtn.style.display  = (isSetup || isAdkw) ? 'none' : '';
+  if (fetchBtn) {
+    fetchBtn.style.display = (isSetup || isAdkw) ? 'none' : '';
+    fetchBtn.textContent = isMeta ? '📢 一鍵開啟廣告庫' : '🔄 全部抓取';
+  }
   if (importBtn) {
-    importBtn.style.display = (isSetup || isAdkw) ? 'none' : '';
+    // Meta 廣告庫為手動記錄，不提供自動匯入，隱藏此按鈕
+    importBtn.style.display = (isSetup || isAdkw || isMeta) ? 'none' : '';
     importBtn.textContent = tab === 'banner'
       ? '📥 加入已勾選至即時動態'
       : '📥 全部加入即時動態';
