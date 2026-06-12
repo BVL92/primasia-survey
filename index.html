@@ -10,7 +10,7 @@
 <script>
 // Force reload when a new version is deployed
 (function(){
-  var V='20260611-9';
+  var V='20260611-10';
   if(localStorage.getItem('_sv')!==V){
     localStorage.setItem('_sv',V);
     if(!location.search.includes('_r=')){
@@ -594,12 +594,13 @@ async function doLogin(){
   const err=document.getElementById('loginErr');
   // Reject accounts disabled by admin
   if(disabledAccounts.has(inputId.toLowerCase())){err.style.display='block';return;}
-  // Case-insensitive lookup: check hardcoded CREDS first, then Firestore-managed accounts
-  let id=Object.keys(CREDS).find(k=>k.toLowerCase()===inputId.toLowerCase());
-  let credPw=id?CREDS[id]:null;
+  // Firestore accounts checked first so re-added accounts use their new password.
+  // Fall back to hardcoded CREDS for accounts never managed via Firestore.
+  let id=Object.keys(dynamicCreds).find(k=>k.toLowerCase()===inputId.toLowerCase());
+  let credPw=id?dynamicCreds[id]:null;
   if(!id){
-    const fsKey=Object.keys(dynamicCreds).find(k=>k.toLowerCase()===inputId.toLowerCase());
-    if(fsKey){id=fsKey;credPw=dynamicCreds[fsKey];}
+    const builtinKey=Object.keys(CREDS).find(k=>k.toLowerCase()===inputId.toLowerCase());
+    if(builtinKey){id=builtinKey;credPw=CREDS[builtinKey];}
   }
   if(!id||credPw!==pw){err.style.display='block';return;}
   err.style.display='none';currentUser=id;

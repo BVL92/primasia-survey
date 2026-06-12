@@ -1214,16 +1214,23 @@ async function addAccount(){
   const pw=document.getElementById('newAccPw').value.trim();
   if(!id){alert('請輸入帳號 ID');return;}
   if(!pw){alert('請輸入密碼');return;}
-  if(BUILTIN_IDS.some(b=>b.toLowerCase()===id.toLowerCase())){
-    alert(`帳號「${id}」已存在於內建帳號中，無需重複新增。`);return;
-  }
+  // Check Firestore for existing or previously-deleted record
+  let existingData=null;
   try{
-    const doc=await db.collection('accounts').doc(id.toLowerCase()).get();
-    if(doc.exists){alert(`帳號「${id}」已存在`);return;}
+    const snap=await db.collection('accounts').doc(id.toLowerCase()).get();
+    if(snap.exists)existingData=snap.data();
   }catch(e){}
+  // Reject if active Firestore account already exists (not soft-deleted)
+  if(existingData&&!existingData.disabled){alert(`帳號「${id}」已存在`);return;}
+  // Reject if active built-in account (not yet soft-deleted)
+  const isBuiltin=BUILTIN_IDS.some(b=>b.toLowerCase()===id.toLowerCase());
+  const isSoftDeleted=existingData?.disabled===true;
+  if(isBuiltin&&!isSoftDeleted){alert(`帳號「${id}」已存在於內建帳號中，如需更換密碼請先刪除再重新新增。`);return;}
+  // Allow: new account OR re-adding a previously soft-deleted account
   try{
     await db.collection('accounts').doc(id.toLowerCase()).set({
       displayId:id,password:pw,createdAt:new Date().toISOString()
+      // No 'disabled' field = active account (overwrites any prior disabled doc)
     });
     document.getElementById('newAccId').value='';
     document.getElementById('newAccPw').value='';
