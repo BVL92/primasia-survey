@@ -1037,9 +1037,13 @@ function initData() {
   const merged = SYSTEM_USERS.map(su => {
     const ex = stored.find(s => s.id === su.id);
     // 帳號/密碼/角色/email 永遠從程式碼取；其餘保留管理員調整的值
-    return ex
-      ? { ...ex, username:su.username, password:su.password, role:su.role, email:su.email }
-      : { ...su, lastLogin: null };
+    if (ex) {
+      const base = { ...ex, username:su.username, password:su.password, role:su.role, email:su.email };
+      // 若有 lastLogin 但 loginCount 為 0（功能上線前的舊登入），補設為至少 1
+      if (base.lastLogin && !base.loginCount) base.loginCount = 1;
+      return base;
+    }
+    return { ...su, lastLogin: null, loginCount: 0, totalLoginSec: 0 };
   });
 
   DB.set('users', [...merged, ...customUsers]);
