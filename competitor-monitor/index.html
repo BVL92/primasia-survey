@@ -1893,7 +1893,7 @@ async function fetchAllIntel() {
   const comps = getAllUsersCompetitors();
   const setup = getIntelSetup();
   if (!comps.length) { showToast('請先設定監控對手', 'error'); return; }
-  if (tab === 'meta')   { showToast('Meta 廣告庫為手動開啟，請點擊各券商的按鈕', ''); return; }
+  if (tab === 'meta')   { openAllMetaAds(); return; }
   if (tab === 'banner') {
     const configured = comps.filter(c => setup[c.id] && setup[c.id].websiteUrl);
     if (!configured.length) { showToast('請先在「官網活動 Banner」分頁輸入各競品的官網網址', 'error'); return; }
@@ -2028,20 +2028,40 @@ function renderIntelAlerts() {
 }
 
 // ── Meta 廣告庫標籤 ──
+function openAllMetaAds() {
+  const myComps = DB.get(userKey('competitors'), []);
+  if (!myComps.length) { showToast('請先至「監控對手設定」設定要監控的券商', 'error'); return; }
+  myComps.forEach(c => {
+    const url = `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=TW&q=${encodeURIComponent(c.name)}&search_type=keyword_unordered`;
+    window.open(url, '_blank');
+  });
+  showToast(`📢 已開啟 ${myComps.length} 家監控券商的 Meta 廣告庫`, 'success');
+}
+
 function renderIntelMeta() {
-  const comps = getAllUsersCompetitors();
+  // 只顯示此使用者設定的監控對手（不是全部 30 家）
+  const myComps = DB.get(userKey('competitors'), []);
+  // 管理員也看自己的監控清單；若沒有則 fallback 到全部
+  const comps = myComps.length ? myComps : getAllUsersCompetitors();
+
   let html = `
     <div class="intel-notice" style="background:#e8f4ff;border-color:#93c5fd">
       <span style="font-size:26px;flex-shrink:0">📘</span>
       <div>
         <div style="font-weight:700;color:#1e40af;margin-bottom:5px">Meta 廣告檔案庫使用方式</div>
         <ul style="color:#1e3a8a">
-          <li>點擊「開啟廣告庫」，系統自動帶入券商名稱開啟 Meta 廣告檔案庫搜尋頁</li>
-          <li>進入後設定：國家 <strong>台灣</strong>、廣告狀態 <strong>所有廣告</strong></li>
-          <li>即可查看該券商今天投放的所有開戶、手續費優惠或 ETF 推廣廣告</li>
-          <li>可直接點「＋ 手動記錄」將觀察到的廣告內容記錄到即時動態</li>
+          <li>點「<strong>一鍵開啟全部廣告庫</strong>」，系統自動為您監控的所有券商開啟 Meta 廣告庫搜尋頁</li>
+          <li>進入後確認設定：國家 <strong>台灣</strong>、廣告狀態 <strong>所有廣告</strong></li>
+          <li>即可查看該券商目前投放的所有開戶、手續費優惠或 ETF 推廣廣告</li>
+          <li>觀察到重要廣告後，點「＋ 手動記錄」將廣告動態記錄到即時動態</li>
         </ul>
       </div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:13px;color:var(--text-muted)">顯示您的監控對手（共 <strong>${comps.length}</strong> 家），點各券商按鈕可單獨開啟</div>
+      <button onclick="openAllMetaAds()" style="background:#1877f2;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px">
+        📢 一鍵開啟全部廣告庫
+      </button>
     </div>`;
 
   if (!comps.length) {
